@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastAPI Authentication System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-lg rounded-lg mb-8">
+            <div class="px-6 py-4">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-2xl font-bold text-blue-600">Auth System</h1>
+                    <div id="nav-links">
+                        <!-- Navigation links will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div id="content">
+            <!-- Content will be populated by JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let currentUser = null;
+        let authToken = localStorage.getItem('authToken');
+        
+        // API base URL
+        const API_BASE = '/api';
+        
+        // Set up axios defaults
+        if (authToken) {
+            axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+        }
+
+        // Navigation
+        function renderNavigation() {
+            const navLinks = document.getElementById('nav-links');
+            
+            if (currentUser) {
+                navLinks.innerHTML = `
+                    <div class="flex items-center space-x-4">
+                        <span class="text-gray-700">Welcome, ${currentUser.first_name}!</span>
+                        <span class="text-sm text-gray-500">(${currentUser.role})</span>
+                        <button onclick="logout()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                            Logout
+                        </button>
+                    </div>
+                `;
+            } else {
+                navLinks.innerHTML = `
+                    <div class="space-x-4">
+                        <button onclick="showLogin()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                            Login
+                        </button>
+                        <button onclick="showRegister()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                            Register
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // Authentication functions
+        async function login(email, password) {
+            try {
+                const response = await axios.post(`${API_BASE}/auth/login`, {
+                    email: email,
+                    password: password
+                });
+                
+                authToken = response.data.access_token;
+                currentUser = response.data.user;
+                localStorage.setItem('authToken', authToken);
+                axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+                
+                renderNavigation();
+                showDashboard();
+                
+                return true;
+            } catch (error) {
+                alert(error.response?.data?.detail || 'Login failed');
+                return false;
+            }
+        }
+
+        async function requestOTP(email, purpose = 'login') {
+            try {
+                await axios.post(`${API_BASE}/auth/request-otp`, {
+                    email: email,
+                    purpose: purpose
+                });
+                return true;
+            } catch (error) {
+                alert(error.response?.data?.detail || 'Failed to send OTP');
+                return false;
+            }
+        }
+
+        async function verifyOTP(email, otpCode, purpose = 'login') {
+            try {
+                const response = await axios.post(`${API_BASE}/auth/verify-otp`, {
+                    email: email,
+                    otp_code: otpCode,
+                    purpose: purpose
+                });
+                
+                authToken = response.data.access_token;
+                currentUser = response.data.user;
+                localStorage.setItem('authToken', authToken);
+                axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+                
+                renderNavigation();
+                showDashboard();
+                
+                return true;
+            } catch (error) {
+                alert(error.response?.data?.detail || 'OTP verification failed');
+                return false;
+            }
+        }
+
+        function logout() {
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem('authToken');
+            delete axios.defaults.headers.common['Authorization'];
+            renderNavigation();
+            showLogin();
+        }
+
+        // UI functions
+        function showLogin() {
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Login</h2>
+                    
+                    <div class="mb-4">
+                        <button onclick="showPasswordLogin()" class="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 mb-2">
+                            Login with Password
+                        </button>
+                        <button onclick="showOTPLogin()" class="w-full bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600">
+                            Login with OTP
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showPasswordLogin() {
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Login with Password</h2>
+                    
+                    <form onsubmit="handlePasswordLogin(event)">
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Email:</label>
+                            <input type="email" id="email" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Password:</label>
+                            <input type="password" id="password" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">
+                            Login
+                        </button>
+                    </form>
+                    
+                    <div class="mt-4 text-center">
+                        <button onclick="showLogin()" class="text-blue-500 hover:underline">Back to Login Options</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showOTPLogin() {
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Login with OTP</h2>
+                    
+                    <div id="otp-step-1">
+                        <form onsubmit="handleOTPRequest(event)">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Email:</label>
+                                <input type="email" id="otp-email" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600">
+                                Send OTP
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div id="otp-step-2" style="display: none;">
+                        <form onsubmit="handleOTPVerification(event)">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Enter OTP:</label>
+                                <input type="text" id="otp-code" required maxlength="6" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600">
+                                Verify OTP
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="mt-4 text-center">
+                        <button onclick="showLogin()" class="text-blue-500 hover:underline">Back to Login Options</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showRegister() {
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Register</h2>
+                    
+                    <div class="mb-4">
+                        <button onclick="showCustomerRegistration()" class="w-full bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600 mb-2">
+                            Register as Customer
+                        </button>
+                        <button onclick="showEngineerRegistration()" class="w-full bg-orange-500 text-white py-2 px-4 rounded hover:bg-orange-600">
+                            Register as Engineer
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4 text-center">
+                        <button onclick="showLogin()" class="text-blue-500 hover:underline">Already have an account? Login</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showCustomerRegistration() {
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Customer Registration</h2>
+                    
+                    <div id="customer-step-1">
+                        <form onsubmit="handleCustomerOTPRequest(event)">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Email:</label>
+                                <input type="email" id="customer-email" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600">
+                                Send OTP
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div id="customer-step-2" style="display: none;">
+                        <form onsubmit="handleCustomerRegistration(event)">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-bold mb-2">First Name:</label>
+                                <input type="text" id="customer-first-name" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Last Name:</label>
+                                <input type="text" id="customer-last-name" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-bold mb-2">OTP Code:</label>
+                                <input type="text" id="customer-otp" required maxlength="6" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600">
+                                Register
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="mt-4 text-center">
+                        <button onclick="showRegister()" class="text-blue-500 hover:underline">Back to Registration Options</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showEngineerRegistration() {
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Engineer Registration</h2>
+                    
+                    <form onsubmit="handleEngineerRegistration(event)">
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Email:</label>
+                            <input type="email" id="engineer-email" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">First Name:</label>
+                            <input type="text" id="engineer-first-name" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Last Name:</label>
+                            <input type="text" id="engineer-last-name" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Password:</label>
+                            <input type="password" id="engineer-password" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Years of Experience:</label>
+                            <input type="number" id="engineer-experience" required min="0" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Skills:</label>
+                            <textarea id="engineer-skills" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500" rows="3"></textarea>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Previous Company (Optional):</label>
+                            <input type="text" id="engineer-company" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Portfolio URL (Optional):</label>
+                            <input type="url" id="engineer-portfolio" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-orange-500 text-white py-2 px-4 rounded hover:bg-orange-600">
+                            Register (Requires Approval)
+                        </button>
+                    </form>
+                    
+                    <div class="mt-4 text-center">
+                        <button onclick="showRegister()" class="text-blue-500 hover:underline">Back to Registration Options</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showDashboard() {
+            if (!currentUser) {
+                showLogin();
+                return;
+            }
+
+            if (currentUser.role === 'super_admin') {
+                showSuperAdminDashboard();
+            } else if (currentUser.role === 'admin') {
+                showAdminDashboard();
+            } else if (currentUser.role === 'engineer') {
+                showEngineerDashboard();
+            } else if (currentUser.role === 'customer') {
+                showCustomerDashboard();
+            }
+        }
+
+        async function showSuperAdminDashboard() {
+            try {
+                const response = await axios.get(`${API_BASE}/admin/dashboard`);
+                const dashboardData = response.data;
+                
+                document.getElementById('content').innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-lg font-semibold text-gray-700">Total Users</h3>
+                            <p class="text-3xl font-bold text-blue-600">${dashboardData.stats.total_users}</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-lg font-semibold text-gray-700">Pending Engineers</h3>
+                            <p class="text-3xl font-bold text-orange-600">${dashboardData.stats.pending_engineers}</p>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="text-lg font-semibold text-gray-700">Total Admins</h3>
+                            <p class="text-3xl font-bold text-purple-600">${dashboardData.stats.total_admins}</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-xl font-semibold">Admin Management</h3>
+                                <button onclick="showCreateAdmin()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                                    Add Admin
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h3 class="text-xl font-semibold mb-4">Pending Applications</h3>
+                            <div id="pending-applications">
+                                ${dashboardData.pending_applications.map(app => `
+                                    <div class="border-b pb-2 mb-2">
+                                        <p class="font-medium">${app.user.first_name} ${app.user.last_name}</p>
+                                        <p class="text-sm text-gray-600">${app.user.email}</p>
+                                        <p class="text-sm">${app.experience_years} years experience</p>
+                                        <div class="mt-2">
+                                            <button onclick="reviewApplication(${app.id}, 'approved')" class="bg-green-500 text-white px-2 py-1 rounded text-sm mr-2">Approve</button>
+                                            <button onclick="reviewApplication(${app.id}, 'rejected')" class="bg-red-500 text-white px-2 py-1 rounded text-sm">Reject</button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Failed to load dashboard:', error);
+                alert('Failed to load dashboard data');
+            }
+        }
+
+        async function showAdminDashboard() {
+            // Similar to super admin but without admin creation
+            await showSuperAdminDashboard();
+        }
+
+        function showEngineerDashboard() {
+            document.getElementById('content').innerHTML = `
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-2xl font-bold mb-4">Engineer Dashboard</h2>
+                    <div class="bg-blue-50 border border-blue-200 rounded p-4">
+                        <p class="text-blue-800">
+                            Welcome to your engineer dashboard! Your account status: 
+                            <span class="font-semibold">${currentUser.status}</span>
+                        </p>
+                        ${currentUser.status === 'pending' ? 
+                            '<p class="text-orange-600 mt-2">Your application is pending admin approval.</p>' : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function showCustomerDashboard() {
+            document.getElementById('content').innerHTML = `
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-2xl font-bold mb-4">Customer Dashboard</h2>
+                    <div class="bg-green-50 border border-green-200 rounded p-4">
+                        <p class="text-green-800">Welcome to your customer dashboard!</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showCreateAdmin() {
+            document.getElementById('content').innerHTML = `
+                <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Create Admin</h2>
+                    
+                    <form onsubmit="handleCreateAdmin(event)">
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Email:</label>
+                            <input type="email" id="admin-email" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">First Name:</label>
+                            <input type="text" id="admin-first-name" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Last Name:</label>
+                            <input type="text" id="admin-last-name" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">
+                            Create Admin
+                        </button>
+                    </form>
+                    
+                    <div class="mt-4 text-center">
+                        <button onclick="showDashboard()" class="text-blue-500 hover:underline">Back to Dashboard</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Event handlers
+        async function handlePasswordLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            await login(email, password);
+        }
+
+        async function handleOTPRequest(event) {
+            event.preventDefault();
+            const email = document.getElementById('otp-email').value;
+            
+            if (await requestOTP(email, 'login')) {
+                document.getElementById('otp-step-1').style.display = 'none';
+                document.getElementById('otp-step-2').style.display = 'block';
+            }
+        }
+
+        async function handleOTPVerification(event) {
+            event.preventDefault();
+            const email = document.getElementById('otp-email').value;
+            const otpCode = document.getElementById('otp-code').value;
+            await verifyOTP(email, otpCode, 'login');
+        }
+
+        async function handleCustomerOTPRequest(event) {
+            event.preventDefault();
+            const email = document.getElementById('customer-email').value;
+            
+            if (await requestOTP(email, 'registration')) {
+                document.getElementById('customer-step-1').style.display = 'none';
+                document.getElementById('customer-step-2').style.display = 'block';
+            }
+        }
+
+        async function handleCustomerRegistration(event) {
+            event.preventDefault();
+            const email = document.getElementById('customer-email').value;
+            const firstName = document.getElementById('customer-first-name').value;
+            const lastName = document.getElementById('customer-last-name').value;
+            const otpCode = document.getElementById('customer-otp').value;
+            
+            try {
+                await axios.post(`${API_BASE}/auth/register/customer`, {
+                    email: email,
+                    first_name: firstName,
+                    last_name: lastName,
+                    otp_code: otpCode
+                });
+                
+                alert('Registration successful! You can now login.');
+                showLogin();
+            } catch (error) {
+                alert(error.response?.data?.detail || 'Registration failed');
+            }
+        }
+
+        async function handleEngineerRegistration(event) {
+            event.preventDefault();
+            const data = {
+                email: document.getElementById('engineer-email').value,
+                first_name: document.getElementById('engineer-first-name').value,
+                last_name: document.getElementById('engineer-last-name').value,
+                password: document.getElementById('engineer-password').value,
+                experience_years: parseInt(document.getElementById('engineer-experience').value),
+                skills: document.getElementById('engineer-skills').value,
+                previous_company: document.getElementById('engineer-company').value || null,
+                portfolio_url: document.getElementById('engineer-portfolio').value || null
+            };
+            
+            try {
+                await axios.post(`${API_BASE}/auth/register/engineer`, data);
+                alert('Registration submitted! Please wait for admin approval.');
+                showLogin();
+            } catch (error) {
+                alert(error.response?.data?.detail || 'Registration failed');
+            }
+        }
+
+        async function handleCreateAdmin(event) {
+            event.preventDefault();
+            const data = {
+                email: document.getElementById('admin-email').value,
+                first_name: document.getElementById('admin-first-name').value,
+                last_name: document.getElementById('admin-last-name').value
+            };
+            
+            try {
+                await axios.post(`${API_BASE}/admin/create-admin`, data);
+                alert('Admin created successfully!');
+                showDashboard();
+            } catch (error) {
+                alert(error.response?.data?.detail || 'Failed to create admin');
+            }
+        }
+
+        async function reviewApplication(applicationId, status) {
+            const notes = prompt('Enter review notes (optional):') || '';
+            
+            try {
+                await axios.post(`${API_BASE}/admin/engineer-applications/${applicationId}/review`, {
+                    status: status,
+                    review_notes: notes
+                });
+                
+                alert(`Application ${status} successfully!`);
+                showDashboard();
+            } catch (error) {
+                alert(error.response?.data?.detail || 'Failed to review application');
+            }
+        }
+
+        // Initialize app
+        async function init() {
+            if (authToken) {
+                try {
+                    const response = await axios.get(`${API_BASE}/users/me`);
+                    currentUser = response.data;
+                } catch (error) {
+                    // Token is invalid
+                    logout();
+                    return;
+                }
+            }
+            
+            renderNavigation();
+            
+            if (currentUser) {
+                showDashboard();
+            } else {
+                showLogin();
+            }
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html>
