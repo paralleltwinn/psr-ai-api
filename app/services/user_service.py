@@ -15,7 +15,7 @@ import logging
 
 from ..database.models import User, EngineerApplication, Notification, AuditLog
 from ..database.database import get_db
-from ..core.constants import UserRole, NotificationType, ApplicationStatus
+from ..core.constants import UserRole, UserStatus, NotificationType, ApplicationStatus
 from ..auth.auth import get_password_hash, generate_otp_secret
 from ..api.schemas import UserCreate, UserUpdate
 
@@ -58,19 +58,22 @@ class UserService:
                 first_name=user_data.first_name,
                 last_name=user_data.last_name,
                 phone_number=user_data.phone_number,
-                hashed_password=get_password_hash(user_data.password),
+                hashed_password=get_password_hash(user_data.password) if user_data.password else None,
                 role=user_data.role or UserRole.CUSTOMER,
                 otp_secret=generate_otp_secret(),
                 is_active=True,
-                is_verified=False
+                status=UserStatus.PENDING  # New users start as pending
             )
             
             self.db.add(db_user)
             self.db.commit()
             self.db.refresh(db_user)
             
-            # Log user creation
-            self._log_user_activity(db_user, "User account created")
+            # Log user creation (non-critical, don't fail if this errors)
+            try:
+                self._log_user_activity(db_user, "User account created")
+            except Exception as log_error:
+                logger.warning(f"Failed to log user creation activity: {log_error}")
             
             logger.info(f"User created successfully: {db_user.email}")
             return db_user
@@ -148,8 +151,7 @@ class UserService:
                     detail="User not found"
                 )
             
-            user.is_verified = True
-            user.email_verified_at = datetime.utcnow()
+            user.status = UserStatus.ACTIVE  # Mark as active/verified
             user.updated_at = datetime.utcnow()
             
             self.db.commit()
@@ -222,7 +224,7 @@ class UserService:
         query: str, 
         role: Optional[UserRole] = None,
         is_active: Optional[bool] = None,
-        is_verified: Optional[bool] = None,
+        status: Optional[UserStatus] = None,
         skip: int = 0, 
         limit: int = 100
     ) -> List[User]:
@@ -247,9 +249,9 @@ class UserService:
             if is_active is not None:
                 db_query = db_query.filter(User.is_active == is_active)
             
-            # Verified filter
-            if is_verified is not None:
-                db_query = db_query.filter(User.is_verified == is_verified)
+            # Status filter
+            if status is not None:
+                db_query = db_query.filter(User.status == status)
             
             return db_query.offset(skip).limit(limit).all()
             
@@ -262,7 +264,9 @@ class UserService:
         try:
             total_users = self.db.query(func.count(User.id)).scalar()
             active_users = self.db.query(func.count(User.id)).filter(User.is_active == True).scalar()
-            verified_users = self.db.query(func.count(User.id)).filter(User.is_verified == True).scalar()
+            approved_users = self.db.query(func.count(User.id)).filter(
+                User.status.in_([UserStatus.ACTIVE, UserStatus.APPROVED])
+            ).scalar()
             
             # Users by role
             role_stats = {}
@@ -281,7 +285,7 @@ class UserService:
             return {
                 "total_users": total_users,
                 "active_users": active_users,
-                "verified_users": verified_users,
+                "approved_users": approved_users,
                 "users_by_role": role_stats,
                 "recent_registrations": recent_registrations
             }
@@ -346,16 +350,23 @@ class UserService:
             log_entry = AuditLog(
                 user_id=user.id,
                 action=action,
+                entity_type="User",  # Required field
+                entity_id=str(user.id),  # Required field
                 details=details,
                 ip_address="system",  # Could be enhanced to track actual IP
                 user_agent="system"
             )
             
-            self.db.add(log_entry)
-            self.db.commit()
+            # Use a separate session to avoid interfering with main transaction
+            from sqlalchemy.orm import sessionmaker
+            Session = sessionmaker(bind=self.db.bind)
+            with Session() as log_session:
+                log_session.add(log_entry)
+                log_session.commit()
             
         except Exception as e:
             logger.error(f"Error logging user activity: {e}")
+            # Don't re-raise the exception to avoid breaking the main flow
 
 
 # Service functions for easy access
@@ -406,10 +417,10 @@ def search_users(
     query: str,
     role: Optional[UserRole] = None,
     is_active: Optional[bool] = None,
-    is_verified: Optional[bool] = None,
+    status: Optional[UserStatus] = None,
     skip: int = 0,
     limit: int = 100
 ) -> List[User]:
     """Search users."""
     service = UserService(db)
-    return service.search_users(query, role, is_active, is_verified, skip, limit)
+    return service.search_users(query, role, is_active, status, skip, limit)

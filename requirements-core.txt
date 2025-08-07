@@ -1,0 +1,40 @@
+# =============================================================================
+# POORNASREE AI - CORE REQUIREMENTS
+# =============================================================================
+
+# Core FastAPI framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Database & ORM
+sqlalchemy>=2.0.23
+alembic>=1.12.1
+pymysql>=1.1.0
+aiomysql>=0.2.0
+databases[mysql]>=0.8.0
+
+# Authentication & Security  
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+cryptography>=41.0.0
+
+# Configuration & Environment
+python-dotenv>=1.0.0
+pydantic-settings>=2.0.3
+
+# Email & Validation
+email-validator>=2.1.0
+aiosmtplib>=2.0.2
+
+# Templates & Files
+jinja2>=3.1.2
+aiofiles>=23.2.1
+
+# OTP & QR Codes
+pyotp>=2.9.0
+qrcode[pil]>=7.4.2
+
+# Optional: Caching & Background Tasks (can be installed later)
+# redis>=5.0.1
+# celery>=5.3.4

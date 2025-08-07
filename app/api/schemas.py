@@ -59,6 +59,14 @@ class UserResponse(UserBase):
     last_login: Optional[datetime] = None
     phone_number: Optional[str] = None
     profile_picture: Optional[str] = None
+    
+    # Customer specific fields
+    machine_model: Optional[str] = None
+    state: Optional[str] = None
+    
+    # Engineer specific fields  
+    department: Optional[str] = None
+    dealer: Optional[str] = None
 
 
 class UserListResponse(BaseSchema):
@@ -166,40 +174,75 @@ class OTPVerifyRequest(BaseSchema):
 # =============================================================================
 
 class CustomerRegistration(BaseSchema):
-    """Schema for customer registration."""
+    """
+    Schema for customer registration - simplified fields only.
+    
+    **Example:**
+    ```json
+    {
+      "email": "customer@example.com",
+      "first_name": "John",
+      "last_name": "Doe", 
+      "machine_model": "Model X1",
+      "state": "California",
+      "phone_number": "+1234567890",
+      "otp_code": "123456"
+    }
+    ```
+    """
     email: EmailStr = Field(..., description="Customer email address")
     first_name: str = Field(..., min_length=1, max_length=100, description="Customer first name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Customer last name")
+    machine_model: str = Field(..., min_length=1, max_length=200, description="Machine model")
+    state: str = Field(..., min_length=1, max_length=100, description="State/Province")
+    phone_number: str = Field(..., max_length=20, description="Customer phone number")
     otp_code: str = Field(..., min_length=6, max_length=6, description="OTP verification code")
-    phone_number: Optional[str] = Field(None, max_length=20, description="Customer phone number")
 
 
 class EngineerRegistration(BaseSchema):
-    """Schema for engineer registration."""
+    """
+    Schema for engineer registration - simplified fields only.
+    
+    **Example:**
+    ```json
+    {
+      "email": "engineer@example.com",
+      "first_name": "Jane",
+      "last_name": "Smith",
+      "phone_number": "+1234567890",
+      "department": "AI Research",
+      "dealer": "Tech Solutions Inc",
+      "state": "New York"
+    }
+    ```
+    """
     email: EmailStr = Field(..., description="Engineer email address")
     first_name: str = Field(..., min_length=1, max_length=100, description="Engineer first name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Engineer last name")
-    password: str = Field(..., min_length=8, max_length=100, description="Engineer password")
-    experience_years: int = Field(..., ge=0, le=50, description="Years of experience")
-    skills: str = Field(..., min_length=10, max_length=2000, description="Technical skills")
-    previous_company: Optional[str] = Field(None, max_length=200, description="Previous company")
-    portfolio_url: Optional[str] = Field(None, max_length=500, description="Portfolio URL")
-    phone_number: Optional[str] = Field(None, max_length=20, description="Phone number")
-    cover_letter: Optional[str] = Field(None, max_length=5000, description="Cover letter")
-    
-    @validator('portfolio_url')
-    def validate_portfolio_url(cls, v):
-        if v and not v.startswith(('http://', 'https://')):
-            raise ValueError('Portfolio URL must start with http:// or https://')
-        return v
+    phone_number: str = Field(..., max_length=20, description="Engineer phone number")
+    department: str = Field(..., min_length=1, max_length=100, description="Department/Specialization")
+    dealer: Optional[str] = Field(None, max_length=200, description="Dealer/Company (optional)")
+    state: str = Field(..., min_length=1, max_length=100, description="State/Province")
 
 
 class AdminCreation(BaseSchema):
     """Schema for admin creation."""
     email: EmailStr = Field(..., description="Admin email address")
+    password: str = Field(..., min_length=8, description="Admin password")
     first_name: str = Field(..., min_length=1, max_length=100, description="Admin first name")
     last_name: str = Field(..., min_length=1, max_length=100, description="Admin last name")
     phone_number: Optional[str] = Field(None, max_length=20, description="Admin phone number")
+    department: str = Field(..., min_length=1, max_length=100, description="Admin department")
+
+
+class SuperAdminProfileUpdate(BaseSchema):
+    """Schema for updating super admin profile."""
+    email: Optional[EmailStr] = Field(None, description="New email address")
+    current_password: str = Field(..., min_length=8, description="Current password for verification")
+    new_password: Optional[str] = Field(None, min_length=8, description="New password (optional)")
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100, description="First name")
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100, description="Last name")
+    phone_number: Optional[str] = Field(None, max_length=20, description="Phone number")
 
 
 # =============================================================================
@@ -244,13 +287,8 @@ class NotificationListResponse(BaseSchema):
 # =============================================================================
 
 class EngineerApplicationResponse(BaseSchema):
-    """Schema for engineer application response."""
+    """Schema for engineer application response - simplified."""
     id: int
-    experience_years: int
-    skills: str
-    previous_company: Optional[str]
-    portfolio_url: Optional[str]
-    cover_letter: Optional[str]
     status: UserStatus
     review_notes: Optional[str]
     review_date: Optional[datetime]
@@ -326,6 +364,57 @@ class APIResponse(BaseSchema):
     message: str = Field(..., description="Response message")
     data: Optional[dict] = Field(None, description="Response data")
     errors: Optional[List[str]] = Field(None, description="Error messages")
+
+
+class APISuccessResponse(BaseSchema):
+    """Success API response schema."""
+    success: bool = Field(True, description="Operation success status")
+    message: str = Field(..., description="Success message")
+    data: Optional[dict] = Field(None, description="Response data")
+
+
+class APIErrorResponse(BaseSchema):
+    """Error API response schema."""
+    success: bool = Field(False, description="Operation success status")
+    message: str = Field(..., description="Error message")
+    errors: Optional[List[str]] = Field(None, description="Detailed error messages")
+    error_code: Optional[str] = Field(None, description="Error code for frontend handling")
+
+
+class UserCreationResponse(BaseSchema):
+    """Response for user creation operations."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    user: UserResponse = Field(..., description="Created user data")
+
+
+class ProfileUpdateResponse(BaseSchema):
+    """Response for profile update operations."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    user: UserResponse = Field(..., description="Updated user data")
+
+
+class DashboardStatsResponse(BaseSchema):
+    """Response for dashboard statistics."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    stats: DashboardStats = Field(..., description="Dashboard statistics")
+
+
+class AdminListResponse(BaseSchema):
+    """Response for admin list operations."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    admins: List[UserResponse] = Field(..., description="List of admin users")
+    total_count: int = Field(..., description="Total number of admins")
+
+
+class LoginMethodResponse(BaseSchema):
+    """Response for login method check."""
+    requires_password: bool = Field(..., description="Whether user requires password login")
+    user_role: Optional[str] = Field(None, description="User role if exists")
+    user_exists: bool = Field(..., description="Whether user exists in system")
 
 
 class HealthCheck(BaseSchema):

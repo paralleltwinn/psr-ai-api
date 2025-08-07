@@ -38,6 +38,14 @@ class User(Base):
     phone_number = Column(String(20), nullable=True)
     profile_picture = Column(String(500), nullable=True)
     
+    # Customer specific fields
+    machine_model = Column(String(200), nullable=True)
+    state = Column(String(100), nullable=True)
+    
+    # Engineer specific fields
+    department = Column(String(100), nullable=True)
+    dealer = Column(String(200), nullable=True)
+    
     # Relationships
     notifications_sent = relationship(
         "Notification", 
@@ -109,18 +117,12 @@ class Notification(Base):
 
 
 class EngineerApplication(Base):
-    """Engineer application model for approval workflow."""
+    """Engineer application model for approval workflow - simplified."""
     
     __tablename__ = "engineer_applications"
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    experience_years = Column(Integer, nullable=False)
-    skills = Column(Text, nullable=False)
-    previous_company = Column(String(200), nullable=True)
-    portfolio_url = Column(String(500), nullable=True)
-    resume_url = Column(String(500), nullable=True)
-    cover_letter = Column(Text, nullable=True)
     
     # Application status and review
     status = Column(Enum(UserStatus), default=UserStatus.PENDING)

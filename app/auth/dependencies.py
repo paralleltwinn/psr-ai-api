@@ -14,7 +14,7 @@ from typing import Optional, Union
 
 from ..database.database import get_db
 from ..database.models import User
-from ..core.constants import UserRole
+from ..core.constants import UserRole, UserStatus
 from .auth import verify_token
 import logging
 
@@ -76,10 +76,10 @@ async def get_current_verified_user(
     current_user: User = Depends(get_current_active_user)
 ) -> User:
     """Get current verified user."""
-    if not current_user.is_verified:
+    if current_user.status not in [UserStatus.ACTIVE, UserStatus.APPROVED]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email first"
+            detail="Account approval required"
         )
     return current_user
 

@@ -220,6 +220,55 @@ def get_otp_email_template(user_name: str, otp_code: str) -> str:
     """
 
 
+def get_registration_otp_template(user_name: str, otp_code: str) -> str:
+    """Get HTML template for registration OTP verification."""
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Complete Registration - Poornasree AI</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .otp-code {{ font-size: 32px; font-weight: bold; color: #28a745; text-align: center; background: white; padding: 20px; border-radius: 10px; margin: 20px 0; letter-spacing: 5px; }}
+            .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 14px; }}
+            .logo {{ font-size: 24px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="logo">🚀 Poornasree AI</div>
+            <h1>Complete Your Registration</h1>
+        </div>
+        <div class="content">
+            <h2>Welcome {user_name}!</h2>
+            <p>You're almost done! Please use the verification code below to complete your registration:</p>
+            
+            <div class="otp-code">{otp_code}</div>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+                <li>Enter this code in the registration form</li>
+                <li>Complete your profile information</li>
+                <li>Start exploring Poornasree AI features</li>
+            </ul>
+            
+            <p><strong>Security Note:</strong> This code expires in 15 minutes for your security.</p>
+            
+            <p>If you didn't request this registration, please ignore this email.</p>
+        </div>
+        <div class="footer">
+            <p>© 2024 Poornasree AI. All rights reserved.</p>
+            <p>This is an automated message, please do not reply.</p>
+        </div>
+    </body>
+    </html>
+    """
+
+
 def get_welcome_email_template(user_name: str, user_role: str) -> str:
     """Get HTML template for welcome email."""
     return f"""
@@ -445,11 +494,15 @@ async def send_verification_email(user: User, verification_link: str) -> bool:
         return False
 
 
-async def send_otp_email(user: User, otp_code: str) -> bool:
+async def send_otp_email(user: User, otp_code: str, purpose: str = "login") -> bool:
     """Send OTP verification email."""
     try:
-        subject = "Your OTP Code - Poornasree AI"
-        html_content = get_otp_email_template(user.first_name, otp_code)
+        if purpose == "registration":
+            subject = "Complete Your Registration - Poornasree AI"
+            html_content = get_registration_otp_template(user.first_name or "User", otp_code)
+        else:
+            subject = "Your Login Code - Poornasree AI"
+            html_content = get_otp_email_template(user.first_name or "User", otp_code)
         
         return email_service.send_email(
             to_email=user.email,

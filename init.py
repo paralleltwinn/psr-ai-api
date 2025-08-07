@@ -122,8 +122,8 @@ def create_super_admin():
             return True
         
         # Create super admin
-        admin_email = "admin@poornasree.ai"
-        admin_password = "Admin@2024"
+        admin_email = settings.super_admin_email
+        admin_password = settings.super_admin_password
         
         print("🔨 Creating super admin user...")
         

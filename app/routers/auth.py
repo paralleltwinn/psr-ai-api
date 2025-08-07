@@ -9,7 +9,7 @@ Authentication endpoints for login, registration, and OTP verification.
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 # Import from reorganized modules
 from ..api import schemas
@@ -123,38 +123,65 @@ async def request_otp(
     db: Session = Depends(get_db)
 ):
     """Request OTP for login or registration"""
-    # Check if user exists for login
+    
+    # Check if user exists
+    existing_user = user_service.get_user_by_email(db, otp_request.email)
+    
     if otp_request.purpose == "login":
-        user = user_service.get_user_by_email(db, otp_request.email)
-        if not user:
+        # For login, user must exist
+        if not existing_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
         # Only allow OTP login for admin and customer roles
-        if user.role not in [UserRole.ADMIN, UserRole.CUSTOMER]:
+        if existing_user.role not in [UserRole.ADMIN, UserRole.CUSTOMER]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OTP login not supported for this user type"
             )
     
+    elif otp_request.purpose == "registration":
+        # For registration, user should not exist
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User already exists. Please use login instead."
+            )
+    
+    # Clean up any existing unused OTPs for this email and purpose
+    db.query(OTPVerification).filter(
+        OTPVerification.email == otp_request.email,
+        OTPVerification.purpose == otp_request.purpose,
+        OTPVerification.is_used == False
+    ).delete()
+    
     # Generate OTP and send email
     otp_code = auth.generate_random_otp()
     
-    # Create OTP verification record
+    # Create OTP verification record with expiration (15 minutes from now)
+    expires_at = datetime.utcnow() + timedelta(minutes=15)
     otp_verification = OTPVerification(
         email=otp_request.email,
         otp_code=otp_code,
-        purpose=otp_request.purpose
+        purpose=otp_request.purpose,
+        expires_at=expires_at
     )
     db.add(otp_verification)
     db.commit()
     
     # Send OTP email
     if otp_request.purpose == "login":
-        user = user_service.get_user_by_email(db, otp_request.email)
-        await email_service.send_otp_email(user, otp_code)
+        await email_service.send_otp_email(existing_user, otp_code, purpose="login")
+    elif otp_request.purpose == "registration":
+        # For registration, create a temporary user object for email sending
+        temp_user = User(
+            email=otp_request.email,
+            first_name="User",  # We don't have the name yet for registration
+            last_name=""
+        )
+        await email_service.send_otp_email(temp_user, otp_code, purpose="registration")
     
     return {"message": "OTP sent successfully"}
 
@@ -219,14 +246,15 @@ async def register_customer(
     """
     ## 👤 Register Customer Account
     
-    Register a new customer account with email verification.
+    Register a new customer account with simplified fields and email verification.
     
     **Request Body:**
     - `email`: Valid email address
-    - `password`: Strong password (8+ chars, mixed case, numbers, symbols)
     - `first_name`: Customer's first name
     - `last_name`: Customer's last name
-    - `phone_number`: Optional phone number
+    - `machine_model`: Machine model used by customer
+    - `state`: State/Province of customer
+    - `phone_number`: Customer phone number
     - `otp_code`: Email verification code (get from `/request-otp`)
     
     **Process:**
@@ -238,9 +266,10 @@ async def register_customer(
     ```json
     {
       "email": "customer@example.com",
-      "password": "SecurePass123!",
       "first_name": "John",
       "last_name": "Doe",
+      "machine_model": "Model X1",
+      "state": "California",
       "phone_number": "+1234567890",
       "otp_code": "123456"
     }
@@ -251,16 +280,44 @@ async def register_customer(
     - Account status will be `ACTIVE`
     
     **Error Codes:**
-    - `400`: Email already registered or invalid OTP
-    - `422`: Validation errors (weak password, invalid email)
+    - `400`: Email already registered with an active account or invalid OTP
+    - `422`: Validation errors (invalid email)
+    
+    **Note:** If a user previously registered but has PENDING status, 
+    they can register again to update their details.
     """
     # Check if user already exists
     existing_user = user_service.get_user_by_email(db, customer_data.email)
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+        # Allow update in these cases:
+        # 1. Registration was incomplete (no machine_model/state)
+        # 2. User status is PENDING (allows re-registration with updated details)
+        can_update = (
+            existing_user.machine_model is None or 
+            existing_user.state is None or 
+            existing_user.status == UserStatus.PENDING
         )
+        
+        if can_update:
+            # Update the existing user with complete information
+            existing_user.first_name = customer_data.first_name
+            existing_user.last_name = customer_data.last_name
+            existing_user.phone_number = customer_data.phone_number
+            existing_user.machine_model = customer_data.machine_model
+            existing_user.state = customer_data.state
+            existing_user.status = UserStatus.ACTIVE
+            db.commit()
+            db.refresh(existing_user)
+            
+            # Send welcome email
+            await email_service.send_welcome_email(existing_user)
+            
+            return existing_user
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered with an active account"
+            )
     
     # Verify OTP
     otp_verification = db.query(OTPVerification).filter(
@@ -280,7 +337,7 @@ async def register_customer(
     otp_verification.is_used = True
     db.commit()
     
-    # Create customer user
+    # Create customer user with new fields
     user_data = schemas.UserCreate(
         email=customer_data.email,
         first_name=customer_data.first_name,
@@ -290,7 +347,10 @@ async def register_customer(
     )
     
     user = user_service.create_user_account(db, user_data)
-    user.is_verified = True
+    
+    # Add customer-specific fields
+    user.machine_model = customer_data.machine_model
+    user.state = customer_data.state
     user.status = UserStatus.ACTIVE
     db.commit()
     
@@ -305,14 +365,89 @@ async def register_engineer(
     engineer_data: schemas.EngineerRegistration,
     db: Session = Depends(get_db)
 ):
-    """Register engineer (requires admin approval)"""
+    """
+    ## ⚙️ Register Engineer Account
+    
+    Submit engineer application with simplified fields (requires admin approval).
+    
+    **Request Body:**
+    - `email`: Valid email address
+    - `first_name`: Engineer's first name
+    - `last_name`: Engineer's last name
+    - `phone_number`: Engineer's phone number
+    - `department`: Department/Specialization
+    - `dealer`: Dealer/Company (optional)
+    - `state`: State/Province
+    
+    **Example:**
+    ```json
+    {
+      "email": "engineer@example.com",
+      "first_name": "Jane",
+      "last_name": "Smith",
+      "phone_number": "+1234567890",
+      "department": "AI Research",
+      "dealer": "Tech Solutions Inc",
+      "state": "New York"
+    }
+    ```
+    
+    **Returns:**
+    - User profile with `ENGINEER` role
+    - Account status will be `PENDING` until admin approval
+    
+    **Error Codes:**
+    - `400`: Email already registered with an active account
+    - `422`: Validation errors
+    
+    **Note:** If an engineer previously applied but has PENDING status, 
+    they can apply again to update their details.
+    """
     # Check if user already exists
     existing_user = user_service.get_user_by_email(db, engineer_data.email)
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+        # Allow re-registration if status is PENDING (allows updating details)
+        if existing_user.status == UserStatus.PENDING and existing_user.role == UserRole.ENGINEER:
+            # Update the existing engineer with new information
+            existing_user.first_name = engineer_data.first_name
+            existing_user.last_name = engineer_data.last_name
+            existing_user.phone_number = engineer_data.phone_number
+            existing_user.department = engineer_data.department
+            existing_user.dealer = engineer_data.dealer
+            existing_user.state = engineer_data.state
+            existing_user.status = UserStatus.PENDING  # Keep as pending for admin approval
+            db.commit()
+            db.refresh(existing_user)
+            
+            # Update or create engineer application
+            engineer_app = db.query(EngineerApplication).filter(
+                EngineerApplication.user_id == existing_user.id
+            ).first()
+            
+            if engineer_app:
+                engineer_app.status = UserStatus.PENDING
+                engineer_app.updated_at = datetime.utcnow()
+            else:
+                engineer_app = EngineerApplication(
+                    user_id=existing_user.id,
+                    status=UserStatus.PENDING
+                )
+                db.add(engineer_app)
+            
+            db.commit()
+            
+            # Send notification to admins about updated application
+            admin_users = user_service.get_users_by_role(db, UserRole.ADMIN)
+            admin_emails = [admin.email for admin in admin_users]
+            if admin_emails:
+                await email_service.send_engineer_application_notification(existing_user, admin_emails)
+            
+            return existing_user
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered with an active account"
+            )
     
     # Create engineer user with pending status
     user_data = schemas.UserCreate(
@@ -320,22 +455,21 @@ async def register_engineer(
         first_name=engineer_data.first_name,
         last_name=engineer_data.last_name,
         phone_number=engineer_data.phone_number,
-        password=engineer_data.password,
         role=UserRole.ENGINEER
     )
     
     user = user_service.create_user_account(db, user_data)
+    
+    # Add engineer-specific fields
+    user.department = engineer_data.department
+    user.dealer = engineer_data.dealer
+    user.state = engineer_data.state
     user.status = UserStatus.PENDING
     db.commit()
     
-    # Create engineer application
+    # Create simplified engineer application
     engineer_app = EngineerApplication(
         user_id=user.id,
-        experience_years=engineer_data.experience_years,
-        skills=engineer_data.skills,
-        previous_company=engineer_data.previous_company,
-        portfolio_url=engineer_data.portfolio_url,
-        cover_letter=engineer_data.cover_letter,
         status=UserStatus.PENDING
     )
     db.add(engineer_app)
@@ -348,3 +482,49 @@ async def register_engineer(
         await email_service.send_engineer_application_notification(user, admin_emails)
     
     return user
+
+
+@router.get("/check-login-method/{email}", response_model=schemas.LoginMethodResponse)
+async def check_login_method(
+    email: str,
+    db: Session = Depends(get_db)
+):
+    """
+    ## 🔍 Check User Login Method
+    
+    Check whether a user requires password or OTP login.
+    
+    **Parameters:**
+    - `email`: User's email address to check
+    
+    **Returns:**
+    - `requires_password`: True if user has a password set
+    - `user_role`: User's role if found
+    - `user_exists`: True if user exists in system
+    
+    **Example:**
+    ```json
+    {
+      "requires_password": true,
+      "user_role": "super_admin",
+      "user_exists": true
+    }
+    ```
+    """
+    user = user_service.get_user_by_email(db, email)
+    
+    if not user:
+        return schemas.LoginMethodResponse(
+            requires_password=False,
+            user_role=None,
+            user_exists=False
+        )
+    
+    # Check if user has a password set
+    has_password = user.hashed_password is not None and len(user.hashed_password) > 0
+    
+    return schemas.LoginMethodResponse(
+        requires_password=has_password,
+        user_role=user.role.value if user.role else None,
+        user_exists=True
+    )
