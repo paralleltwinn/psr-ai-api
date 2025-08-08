@@ -192,7 +192,7 @@ async def create_admin(
         return AdminCreateResponse(
             success=True,
             message=f"Admin user {new_admin.first_name} {new_admin.last_name} created successfully",
-            user=UserResponse.model_validate(new_admin)
+            admin=UserResponse.model_validate(new_admin)
         )
         
     except HTTPException:
