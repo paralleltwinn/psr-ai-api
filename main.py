@@ -90,8 +90,8 @@ app = FastAPI(
 
 ### 🌟 Default Super Admin
 
-* **Email**: `admin@poornasree.ai`
-* **Password**: `Admin@2024` (⚠️ Change after first login)
+* **Email**: `official.tishnu@gmail.com`
+* **Password**: `Access@404` (⚠️ Change after first login)
 * **Role**: `SUPER_ADMIN`
 
 ---

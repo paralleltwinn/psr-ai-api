@@ -6,7 +6,7 @@
 User service for managing user accounts, profiles, and business logic.
 """
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from fastapi import HTTPException, status
 from typing import List, Optional, Dict, Any
@@ -367,6 +367,276 @@ class UserService:
         except Exception as e:
             logger.error(f"Error logging user activity: {e}")
             # Don't re-raise the exception to avoid breaking the main flow
+    
+    def get_admin_stats(self) -> Dict[str, Any]:
+        """Get limited statistics for regular admin dashboard."""
+        try:
+            # Engineers
+            total_engineers = self.db.query(func.count(User.id)).filter(
+                User.role == UserRole.ENGINEER
+            ).scalar() or 0
+            
+            approved_engineers = self.db.query(func.count(User.id)).filter(
+                and_(
+                    User.role == UserRole.ENGINEER,
+                    User.status == UserStatus.APPROVED
+                )
+            ).scalar() or 0
+            
+            # Customers
+            total_customers = self.db.query(func.count(User.id)).filter(
+                User.role == UserRole.CUSTOMER
+            ).scalar() or 0
+            
+            active_customers = self.db.query(func.count(User.id)).filter(
+                and_(
+                    User.role == UserRole.CUSTOMER,
+                    User.is_active == True
+                )
+            ).scalar() or 0
+            
+            # Engineer applications
+            pending_engineers = self.db.query(func.count(EngineerApplication.id)).filter(
+                EngineerApplication.status == UserStatus.PENDING
+            ).scalar() or 0
+            
+            rejected_engineers = self.db.query(func.count(EngineerApplication.id)).filter(
+                EngineerApplication.status == UserStatus.REJECTED
+            ).scalar() or 0
+            
+            return {
+                "total_engineers": total_engineers,
+                "approved_engineers": approved_engineers,
+                "total_customers": total_customers,
+                "active_customers": active_customers,
+                "pending_engineers": pending_engineers,
+                "rejected_engineers": rejected_engineers,
+                "last_updated": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting admin stats: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve admin statistics"
+            )
+    
+    def create_admin_user(self, email: str, password: str, first_name: str, 
+                         last_name: str, phone_number: str = None, 
+                         department: str = None) -> User:
+        """Create a new admin user (Super Admin only)."""
+        try:
+            # Check if user already exists
+            existing_user = self.get_user_by_email(email)
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already registered"
+                )
+            
+            # Create admin user
+            hashed_password = get_password_hash(password)
+            admin_user = User(
+                email=email.lower(),
+                hashed_password=hashed_password,
+                first_name=first_name,
+                last_name=last_name,
+                phone_number=phone_number,
+                department=department,
+                role=UserRole.ADMIN,
+                status=UserStatus.ACTIVE,
+                is_active=True
+            )
+            
+            self.db.add(admin_user)
+            self.db.commit()
+            self.db.refresh(admin_user)
+            
+            logger.info(f"Admin user created: {email}")
+            return admin_user
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error creating admin user: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create admin user"
+            )
+    
+    def get_all_admins(self) -> List[User]:
+        """Get all admin users (Super Admin only)."""
+        try:
+            admins = self.db.query(User).filter(
+                User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN])
+            ).order_by(User.created_at.desc()).all()
+            
+            return admins
+            
+        except Exception as e:
+            logger.error(f"Error getting admin users: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve admin users"
+            )
+    
+    def deactivate_admin(self, admin_id: int, current_user_id: int) -> User:
+        """Deactivate an admin user (Super Admin only)."""
+        try:
+            admin = self.db.query(User).filter(
+                and_(
+                    User.id == admin_id,
+                    User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN])
+                )
+            ).first()
+            
+            if not admin:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Admin user not found"
+                )
+            
+            # Prevent self-deactivation
+            if admin.id == current_user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot deactivate your own account"
+                )
+            
+            admin.is_active = False
+            admin.status = UserStatus.INACTIVE
+            self.db.commit()
+            self.db.refresh(admin)
+            
+            logger.info(f"Admin user deactivated: {admin.email}")
+            return admin
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error deactivating admin: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to deactivate admin user"
+            )
+    
+    def get_pending_engineer_applications(self, skip: int = 0, limit: int = 100) -> List[EngineerApplication]:
+        """Get pending engineer applications with user details."""
+        try:
+            applications = (
+                self.db.query(EngineerApplication)
+                .filter(EngineerApplication.status == UserStatus.PENDING)
+                .options(joinedload(EngineerApplication.user))
+                .order_by(EngineerApplication.created_at.desc())
+                .offset(skip)
+                .limit(limit)
+                .all()
+            )
+            
+            return applications
+            
+        except Exception as e:
+            logger.error(f"Error getting pending engineer applications: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve pending engineer applications"
+            )
+    
+    def approve_engineer_application(self, application_id: int, reviewer_id: int) -> EngineerApplication:
+        """Approve engineer application and update user role."""
+        try:
+            application = self.db.query(EngineerApplication).filter(
+                EngineerApplication.id == application_id
+            ).first()
+            
+            if not application:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Engineer application not found"
+                )
+            
+            if application.status != UserStatus.PENDING:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Application is not pending"
+                )
+            
+            # Update application
+            application.status = UserStatus.APPROVED
+            application.reviewer_id = reviewer_id
+            application.reviewed_at = datetime.utcnow()
+            
+            # Update user role
+            user = application.user
+            user.role = UserRole.ENGINEER
+            user.status = UserStatus.APPROVED
+            
+            self.db.commit()
+            self.db.refresh(application)
+            
+            # Log activity
+            self._log_user_activity(user, "Engineer application approved", f"Application ID: {application_id}")
+            
+            logger.info(f"Engineer application approved: {application_id} for user {user.email}")
+            return application
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error approving engineer application: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to approve engineer application"
+            )
+    
+    def reject_engineer_application(self, application_id: int, reviewer_id: int, reason: str = None) -> EngineerApplication:
+        """Reject engineer application."""
+        try:
+            application = self.db.query(EngineerApplication).filter(
+                EngineerApplication.id == application_id
+            ).first()
+            
+            if not application:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Engineer application not found"
+                )
+            
+            if application.status != UserStatus.PENDING:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Application is not pending"
+                )
+            
+            # Update application
+            application.status = UserStatus.REJECTED
+            application.reviewer_id = reviewer_id
+            application.reviewed_at = datetime.utcnow()
+            if reason:
+                application.rejection_reason = reason
+            
+            self.db.commit()
+            self.db.refresh(application)
+            
+            # Log activity
+            user = application.user
+            self._log_user_activity(user, "Engineer application rejected", f"Application ID: {application_id}, Reason: {reason}")
+            
+            logger.info(f"Engineer application rejected: {application_id} for user {user.email}")
+            return application
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error rejecting engineer application: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to reject engineer application"
+            )
 
 
 # Service functions for easy access

@@ -117,18 +117,27 @@ class Notification(Base):
 
 
 class EngineerApplication(Base):
-    """Engineer application model for approval workflow - simplified."""
+    """Engineer application model for approval workflow."""
     
     __tablename__ = "engineer_applications"
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
+    # Application details
+    department = Column(String(100), nullable=True)
+    experience = Column(String(50), nullable=True)  # e.g., "5 years", "10+ years"
+    skills = Column(Text, nullable=True)
+    portfolio = Column(String(500), nullable=True)
+    cover_letter = Column(Text, nullable=True)
+    
     # Application status and review
     status = Column(Enum(UserStatus), default=UserStatus.PENDING)
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Alias for compatibility
     review_notes = Column(Text, nullable=True)
     review_date = Column(DateTime(timezone=True), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)  # Alias for compatibility
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

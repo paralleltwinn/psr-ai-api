@@ -46,8 +46,8 @@ async def login(
     **Example:**
     ```json
     {
-      "email": "admin@poornasree.ai",
-      "password": "Admin@2024"
+      "email": "official.tishnu@gmail.com",
+      "password": "Access@404"
     }
     ```
     
@@ -58,7 +58,7 @@ async def login(
       "token_type": "bearer",
       "user": {
         "id": 1,
-        "email": "admin@poornasree.ai",
+        "email": "official.tishnu@gmail.com",
         "role": "SUPER_ADMIN",
         "status": "ACTIVE"
       }

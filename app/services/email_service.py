@@ -322,8 +322,18 @@ def get_welcome_email_template(user_name: str, user_role: str) -> str:
     """
 
 
-def get_engineer_application_template(engineer_name: str, engineer_email: str) -> str:
-    """Get HTML template for engineer application notification."""
+def get_engineer_application_template(engineer_name: str, engineer_email: str, application_id: int, admin_token: str = None) -> str:
+    """Get HTML template for engineer application notification with approve/reject buttons."""
+    
+    # Base URLs for approve/reject actions
+    base_url = settings.frontend_url or "http://localhost:3000"
+    api_base_url = settings.api_base_url or "http://localhost:8000"
+    
+    # Create action URLs
+    approve_url = f"{api_base_url}/admin/engineers/{application_id}/approve"
+    reject_url = f"{api_base_url}/admin/engineers/{application_id}/reject"
+    dashboard_url = f"{base_url}/dashboard"
+    
     return f"""
     <!DOCTYPE html>
     <html>
@@ -335,9 +345,14 @@ def get_engineer_application_template(engineer_name: str, engineer_email: str) -
             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
             .header {{ background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
             .content {{ background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }}
-            .applicant-info {{ background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }}
+            .applicant-info {{ background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107; }}
+            .action-buttons {{ text-align: center; margin: 30px 0; }}
+            .approve-btn {{ display: inline-block; background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 0 10px; font-weight: bold; }}
+            .reject-btn {{ display: inline-block; background: #dc3545; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 0 10px; font-weight: bold; }}
+            .dashboard-btn {{ display: inline-block; background: #007bff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; margin: 10px 0; }}
             .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 14px; }}
             .logo {{ font-size: 24px; font-weight: bold; }}
+            .urgent {{ background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px; margin: 20px 0; }}
         </style>
     </head>
     <body>
@@ -346,24 +361,48 @@ def get_engineer_application_template(engineer_name: str, engineer_email: str) -
             <h1>New Engineer Application</h1>
         </div>
         <div class="content">
-            <h2>Engineer Role Application</h2>
-            <p>A new user has applied for Engineer role and is pending approval.</p>
-            
-            <div class="applicant-info">
-                <h3>Applicant Details:</h3>
-                <p><strong>Name:</strong> {engineer_name}</p>
-                <p><strong>Email:</strong> {engineer_email}</p>
-                <p><strong>Applied At:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+            <div class="urgent">
+                <strong>⏰ Action Required:</strong> A new engineer application is pending your review and approval.
             </div>
             
-            <p>Please review the application and take appropriate action in the admin dashboard.</p>
+            <h2>Engineer Role Application</h2>
+            <p>A new user has applied for Engineer role and requires immediate attention.</p>
             
-            <p><strong>Actions Required:</strong></p>
-            <ul>
-                <li>Review applicant profile</li>
-                <li>Verify credentials</li>
-                <li>Approve or reject application</li>
+            <div class="applicant-info">
+                <h3>📋 Applicant Details:</h3>
+                <p><strong>Name:</strong> {engineer_name}</p>
+                <p><strong>Email:</strong> {engineer_email}</p>
+                <p><strong>Application ID:</strong> #{application_id}</p>
+                <p><strong>Applied At:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+                <p><strong>Status:</strong> <span style="color: #ffc107; font-weight: bold;">PENDING REVIEW</span></p>
+            </div>
+            
+            <h3>🚀 Quick Actions:</h3>
+            <div class="action-buttons">
+                <a href="{dashboard_url}" class="approve-btn">✅ APPROVE APPLICATION</a>
+                <a href="{dashboard_url}" class="reject-btn">❌ REJECT APPLICATION</a>
+            </div>
+            
+            <div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <p><strong>💡 Quick Access:</strong> Click the buttons above to go directly to the admin dashboard where you can review detailed application information and take action.</p>
+            </div>
+            
+            <h3>📝 Review Checklist:</h3>
+            <ul style="background: white; padding: 20px; border-radius: 5px;">
+                <li>✓ Verify applicant's email and contact information</li>
+                <li>✓ Review submitted skills and experience</li>
+                <li>✓ Check portfolio/work samples if provided</li>
+                <li>✓ Evaluate department fit and requirements</li>
+                <li>✓ Make approval/rejection decision</li>
             </ul>
+            
+            <div class="action-buttons">
+                <a href="{dashboard_url}" class="dashboard-btn">🏠 Go to Admin Dashboard</a>
+            </div>
+            
+            <p style="color: #6c757d; font-size: 14px; margin-top: 30px;">
+                <strong>Note:</strong> For detailed applicant information and to complete the review process, please access your admin dashboard.
+            </p>
         </div>
         <div class="footer">
             <p>© 2024 Poornasree AI. All rights reserved.</p>
@@ -552,13 +591,14 @@ async def send_password_reset_email(user: User, reset_link: str) -> bool:
         return False
 
 
-async def send_engineer_application_notification(engineer: User, admin_emails: List[str]) -> bool:
+async def send_engineer_application_notification(engineer: User, admin_emails: List[str], application_id: int) -> bool:
     """Send engineer application notification to admins."""
     try:
-        subject = "New Engineer Application - Approval Required"
+        subject = "🚨 NEW Engineer Application - Immediate Review Required"
         html_content = get_engineer_application_template(
             f"{engineer.first_name} {engineer.last_name}",
-            engineer.email
+            engineer.email,
+            application_id
         )
         
         results = email_service.send_bulk_email(

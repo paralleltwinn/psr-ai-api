@@ -158,8 +158,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 # =============================================================================
 # SUPER ADMIN CONFIGURATION
 # =============================================================================
-SUPER_ADMIN_EMAIL=admin@poornasree.ai
-SUPER_ADMIN_PASSWORD=PoornasreeAI@2025!
+SUPER_ADMIN_EMAIL=official.tishnu@gmail.com
+SUPER_ADMIN_PASSWORD=Access@404
 
 # =============================================================================
 # EMAIL & SMTP CONFIGURATION
@@ -221,8 +221,8 @@ OTP_EXPIRY_MINUTES=5
 curl -X POST "http://localhost:8000/api/v1/auth/login" \
      -H "Content-Type: application/json" \
      -d '{
-       "email": "admin@poornasree.ai",
-       "password": "PoornasreeAI@2025!"
+       "email": "official.tishnu@gmail.com",
+       "password": "Access@404"
      }'
 ```
 
@@ -233,7 +233,7 @@ curl -X POST "http://localhost:8000/api/v1/auth/login" \
   "token_type": "bearer",
   "user": {
     "id": 1,
-    "email": "admin@poornasree.ai", 
+    "email": "official.tishnu@gmail.com", 
     "role": "SUPER_ADMIN",
     "status": "ACTIVE"
   }
@@ -336,8 +336,8 @@ curl http://localhost:8000/health
 
 ### 👑 **Super Admin Access**
 ```
-Email: admin@poornasree.ai
-Password: PoornasreeAI@2025!
+Email: official.tishnu@gmail.com
+Password: Access@404
 ```
 
 ⚠️ **Important**: Change the default super admin password after first login in production!

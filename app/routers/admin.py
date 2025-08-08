@@ -6,14 +6,21 @@
 Admin endpoints for user management and dashboard statistics.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
+from datetime import datetime
 
 # Import from reorganized modules
 from ..api import schemas
+from ..api.schemas import (
+    SuperAdminDashboardResponse, AdminDashboardResponse, SuperAdminStatsResponse, 
+    AdminStatsResponse, AdminCreateRequest, ApplicationReviewRequest, 
+    EngineerApplicationResponse, UserResponse, AdminListResponse
+)
 from ..services import user_service, email_service
+from ..services.user_service import UserService
 from ..database.models import User, EngineerApplication, Notification
 from ..database.database import get_db
 from ..auth.dependencies import require_admin_or_above, require_super_admin, get_current_active_user
@@ -23,36 +30,20 @@ from ..core.constants import UserRole, UserStatus
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.get("/dashboard", response_model=schemas.DashboardStatsResponse)
-async def get_admin_dashboard(
-    current_user: User = Depends(require_admin_or_above),
+@router.get("/dashboard", response_model=SuperAdminDashboardResponse)
+async def get_super_admin_dashboard(
+    current_user: User = Depends(require_super_admin),
     db: Session = Depends(get_db)
 ):
-    """Get admin dashboard statistics"""
+    """Get super admin dashboard statistics (Super Admin only)"""
     try:
-        # Get basic user stats
-        service = user_service.UserService(db)
+        service = UserService(db)
         stats = service.get_user_stats()
         
-        # Calculate pending engineers from engineer applications
-        pending_engineers = db.query(func.count(EngineerApplication.id)).filter(
-            EngineerApplication.status == "pending"
-        ).scalar() or 0
-        
-        dashboard_stats = schemas.DashboardStats(
-            total_users=stats.get("total_users", 0),
-            pending_engineers=pending_engineers,
-            total_admins=stats.get("users_by_role", {}).get("admin", 0),
-            total_engineers=stats.get("users_by_role", {}).get("engineer", 0),
-            total_customers=stats.get("users_by_role", {}).get("customer", 0),
-            active_users=stats.get("active_users", 0),
-            inactive_users=stats.get("total_users", 0) - stats.get("active_users", 0)
-        )
-        
-        return schemas.DashboardStatsResponse(
+        return SuperAdminDashboardResponse(
             success=True,
-            message="Dashboard statistics retrieved successfully",
-            stats=dashboard_stats
+            message="Super admin dashboard statistics retrieved successfully",
+            stats=SuperAdminStatsResponse(**stats)
         )
     except Exception as e:
         raise HTTPException(
@@ -61,69 +52,142 @@ async def get_admin_dashboard(
         )
 
 
-@router.post("/create-admin", response_model=schemas.UserCreationResponse)
+@router.get("/stats", response_model=AdminDashboardResponse)
+async def get_admin_stats(
+    current_user: User = Depends(require_admin_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get admin dashboard statistics (limited access for regular admins)"""
+    try:
+        service = UserService(db)
+        stats = service.get_admin_stats()
+        
+        return AdminDashboardResponse(
+            success=True,
+            message="Admin dashboard statistics retrieved successfully",
+            stats=AdminStatsResponse(**stats)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve admin statistics: {str(e)}"
+        )
+
+
+@router.get("/engineers/pending", response_model=List[EngineerApplicationResponse])
+async def get_pending_engineers(
+    skip: int = Query(0, ge=0, description="Number of applications to skip"),
+    limit: int = Query(100, ge=1, le=1000, description="Number of applications to retrieve"),
+    current_user: User = Depends(require_admin_or_above),
+    db: Session = Depends(get_db)
+):
+    """Get pending engineer applications for admin review"""
+    try:
+        service = UserService(db)
+        applications = service.get_pending_engineer_applications(skip=skip, limit=limit)
+        
+        return [EngineerApplicationResponse.from_orm(app) for app in applications]
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve pending engineers: {str(e)}"
+        )
+
+
+@router.put("/engineers/{engineer_id}/approve", response_model=EngineerApplicationResponse)
+async def approve_engineer(
+    engineer_id: int,
+    current_user: User = Depends(require_admin_or_above),
+    db: Session = Depends(get_db)
+):
+    """Approve engineer application"""
+    try:
+        service = UserService(db)
+        approved_application = service.approve_engineer_application(
+            application_id=engineer_id,
+            reviewer_id=current_user.id
+        )
+        
+        # Send approval email
+        try:
+            await email_service.send_engineer_approval_notification(approved_application.user)
+        except Exception as email_error:
+            print(f"Failed to send approval email: {email_error}")
+        
+        return EngineerApplicationResponse.from_orm(approved_application)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to approve engineer: {str(e)}"
+        )
+
+
+@router.put("/engineers/{engineer_id}/reject", response_model=EngineerApplicationResponse)
+async def reject_engineer(
+    engineer_id: int,
+    review_data: ApplicationReviewRequest,
+    current_user: User = Depends(require_admin_or_above),
+    db: Session = Depends(get_db)
+):
+    """Reject engineer application"""
+    try:
+        service = UserService(db)
+        rejected_application = service.reject_engineer_application(
+            application_id=engineer_id,
+            reviewer_id=current_user.id,
+            reason=review_data.reason
+        )
+        
+        # Send rejection email
+        try:
+            await email_service.send_engineer_rejection_notification(
+                rejected_application.user, review_data.reason or "Application reviewed and rejected by admin"
+            )
+        except Exception as email_error:
+            print(f"Failed to send rejection email: {email_error}")
+        
+        return EngineerApplicationResponse.from_orm(rejected_application)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reject engineer: {str(e)}"
+        )
+@router.post("/create-admin", response_model=UserResponse)
 async def create_admin(
-    admin_data: schemas.AdminCreation,
+    admin_data: AdminCreateRequest,
     current_user: User = Depends(require_super_admin),
     db: Session = Depends(get_db)
 ):
     """Create new admin user (Super Admin only)"""
     try:
-        # Check if user already exists
-        existing_user = user_service.get_user_by_email(db, admin_data.email)
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "success": False,
-                    "message": "Email already registered",
-                    "error_code": "EMAIL_EXISTS"
-                }
-            )
-        
-        # Hash the password
-        hashed_password = get_password_hash(admin_data.password)
-        
-        # Create admin user
-        admin_user = User(
+        service = UserService(db)
+        new_admin = service.create_admin_user(
             email=admin_data.email,
-            hashed_password=hashed_password,
+            password=admin_data.password,
             first_name=admin_data.first_name,
             last_name=admin_data.last_name,
             phone_number=admin_data.phone_number,
-            department=admin_data.department,
-            role=UserRole.ADMIN,
-            status=UserStatus.ACTIVE,
-            is_active=True
+            department=admin_data.department
         )
-        
-        db.add(admin_user)
-        db.commit()
-        db.refresh(admin_user)
         
         # Send welcome email
         try:
-            await email_service.send_welcome_email(admin_user.email, admin_user.first_name)
+            await email_service.send_welcome_email(new_admin.email, new_admin.first_name)
         except Exception as email_error:
             print(f"Failed to send welcome email: {email_error}")
         
-        return schemas.UserCreationResponse(
-            success=True,
-            message=f"Admin user '{admin_user.first_name} {admin_user.last_name}' created successfully",
-            user=schemas.UserResponse.from_orm(admin_user)
-        )
+        return UserResponse.from_orm(new_admin)
         
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "success": False,
-                "message": "Failed to create admin user",
-                "error_code": "CREATION_FAILED"
-            }
+            detail="Failed to create admin user"
         )
 
 

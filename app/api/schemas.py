@@ -7,7 +7,7 @@ Pydantic schemas for request/response validation and serialization.
 """
 
 from pydantic import BaseModel, EmailStr, validator, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from ..core.constants import UserRole, UserStatus, NotificationType
 
@@ -89,20 +89,20 @@ class LoginRequest(BaseSchema):
     **Example:**
     ```json
     {
-      "email": "admin@poornasree.ai",
-      "password": "Admin@2024"
+      "email": "official.tishnu@gmail.com",
+      "password": "Access@404"
     }
     ```
     """
     email: EmailStr = Field(
         ..., 
         description="User email address",
-        example="admin@poornasree.ai"
+        example="official.tishnu@gmail.com"
     )
     password: Optional[str] = Field(
         None, 
         description="User password (required for password login)",
-        example="Admin@2024",
+        example="Access@404",
         min_length=8
     )
 
@@ -118,7 +118,7 @@ class LoginResponse(BaseSchema):
       "token_type": "bearer",
       "user": {
         "id": 1,
-        "email": "admin@poornasree.ai",
+        "email": "official.tishnu@gmail.com",
         "role": "SUPER_ADMIN",
         "status": "ACTIVE"
       },
@@ -295,6 +295,15 @@ class EngineerApplicationResponse(BaseSchema):
     created_at: datetime
     user: UserResponse
     reviewer: Optional[UserResponse] = None
+    
+    # New admin dashboard fields
+    department: Optional[str] = None
+    experience: Optional[str] = None
+    skills: Optional[str] = None
+    portfolio: Optional[str] = None
+    cover_letter: Optional[str] = None
+    reviewer_id: Optional[int] = None
+    reviewed_at: Optional[datetime] = None
 
 
 class EngineerApplicationReview(BaseSchema):
@@ -311,6 +320,83 @@ class EngineerApplicationListResponse(BaseSchema):
     page: int
     size: int
     pages: int
+
+
+# =============================================================================
+# ADMIN MANAGEMENT SCHEMAS
+# =============================================================================
+
+class AdminCreation(BaseSchema):
+    """Schema for creating admin accounts (Super Admin only)."""
+    email: EmailStr = Field(..., description="Admin email address")
+    password: str = Field(..., min_length=8, max_length=100, description="Admin password")
+    first_name: str = Field(..., min_length=1, max_length=100, description="Admin first name")
+    last_name: str = Field(..., min_length=1, max_length=100, description="Admin last name")
+    phone_number: Optional[str] = Field(None, max_length=20, description="Admin phone number")
+    department: Optional[str] = Field(None, max_length=100, description="Department")
+
+
+class SuperAdminProfileUpdate(BaseSchema):
+    """Schema for super admin profile updates."""
+    current_password: str = Field(..., description="Current password for verification")
+    email: Optional[EmailStr] = Field(None, description="New email address")
+    new_password: Optional[str] = Field(None, min_length=8, max_length=100, description="New password")
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100, description="New first name")
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100, description="New last name")
+    phone_number: Optional[str] = Field(None, max_length=20, description="New phone number")
+
+
+class AdminListResponse(BaseSchema):
+    """Response for admin list."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    admins: List[UserResponse] = Field(..., description="List of admin users")
+    total_count: int = Field(..., description="Total number of admins")
+
+
+class AdminDashboardStats(BaseSchema):
+    """Schema for admin dashboard statistics (limited access)."""
+    total_engineers: int = Field(..., description="Total number of engineers")
+    total_customers: int = Field(..., description="Total number of customers")
+    pending_engineers: int = Field(..., description="Number of pending engineer applications")
+    approved_engineers: int = Field(..., description="Number of approved engineers")
+    rejected_engineers: int = Field(..., description="Number of rejected engineers")
+    active_customers: int = Field(..., description="Number of active customers")
+
+
+class AdminStatsResponse(BaseSchema):
+    """Response for admin dashboard statistics."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    stats: AdminDashboardStats = Field(..., description="Admin dashboard statistics")
+
+
+class PendingEngineerResponse(BaseSchema):
+    """Response for pending engineer applications."""
+    id: int = Field(..., description="Application ID")
+    first_name: str = Field(..., description="Engineer first name")
+    last_name: str = Field(..., description="Engineer last name")
+    email: EmailStr = Field(..., description="Engineer email")
+    department: str = Field(..., description="Department")
+    experience: str = Field(..., description="Years of experience")
+    skills: str = Field(..., description="Technical skills")
+    portfolio: Optional[str] = Field(None, description="Portfolio URL")
+    created_at: datetime = Field(..., description="Application date")
+
+
+class PendingEngineersResponse(BaseSchema):
+    """Response for pending engineers list."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    engineers: List[PendingEngineerResponse] = Field(..., description="List of pending engineers")
+
+
+class EngineerActionResponse(BaseSchema):
+    """Response for engineer approval/rejection actions."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    engineer_id: int = Field(..., description="Engineer ID")
+    action: str = Field(..., description="Action performed (approve/reject)")
 
 
 # =============================================================================
@@ -424,3 +510,56 @@ class HealthCheck(BaseSchema):
     timestamp: datetime = Field(..., description="Check timestamp")
     database: str = Field(..., description="Database status")
     redis: str = Field(..., description="Redis status")
+
+
+# =============================================================================
+# ADMIN DASHBOARD SCHEMAS
+# =============================================================================
+
+class AdminCreateRequest(BaseSchema):
+    """Admin Creation Request Schema"""
+    email: EmailStr
+    password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    phone_number: Optional[str] = Field(None, max_length=20)
+    department: Optional[str] = Field(None, max_length=100)
+
+
+class ApplicationReviewRequest(BaseSchema):
+    """Application Review Request Schema"""
+    reason: Optional[str] = Field(None, description="Reason for rejection (required for reject)")
+
+
+class AdminStatsResponse(BaseSchema):
+    """Admin Dashboard Stats Response Schema"""
+    total_engineers: int
+    approved_engineers: int
+    total_customers: int
+    active_customers: int
+    pending_engineers: int
+    rejected_engineers: int
+    last_updated: str
+
+
+class SuperAdminStatsResponse(BaseSchema):
+    """Super Admin Dashboard Stats Response Schema"""
+    total_users: int
+    active_users: int
+    users_by_role: Dict[str, int]
+    users_by_status: Dict[str, int]
+    last_updated: str
+
+
+class AdminDashboardResponse(BaseSchema):
+    """Admin Dashboard Response Schema"""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    stats: AdminStatsResponse = Field(..., description="Admin dashboard statistics")
+
+
+class SuperAdminDashboardResponse(BaseSchema):
+    """Super Admin Dashboard Response Schema"""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    stats: SuperAdminStatsResponse = Field(..., description="Super admin dashboard statistics")

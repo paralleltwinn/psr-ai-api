@@ -129,7 +129,7 @@ def system_status_check():
         print("🚀 Your Poornasree AI application is ready!")
         print("\n📝 Next steps:")
         print("   • Access API docs: http://127.0.0.1:8000/docs")
-        print("   • Login with: admin@poornasree.ai / Admin@2024")
+        print("   • Login with: official.tishnu@gmail.com / Access@404")
         print("   • Change default password after first login")
     else:
         print("⚠️  SOME SYSTEMS NEED ATTENTION")

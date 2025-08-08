@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     app_description: str = "Comprehensive role-based authentication system"
     debug: bool = True
     environment: str = "development"
+    frontend_url: str = "http://localhost:3000"
+    api_base_url: str = "http://localhost:8000"
     
     # =============================================================================
     # API & CORS CONFIGURATION

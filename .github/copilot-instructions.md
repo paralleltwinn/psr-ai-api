@@ -158,8 +158,8 @@ async def get_users():
     
 # Use examples in schemas
 class LoginRequest(BaseSchema):
-    email: EmailStr = Field(..., example="admin@poornasree.ai")
-    password: str = Field(..., example="Admin@2024")
+    email: EmailStr = Field(..., example="official.tishnu@gmail.com")
+    password: str = Field(..., example="Access@404")
 ```
 
 ## 🔐 Authentication Patterns
@@ -258,8 +258,8 @@ audit_log = AuditLog(
 # Test authentication endpoints
 def test_login_success():
     response = client.post("/api/v1/auth/login", json={
-        "email": "admin@poornasree.ai",
-        "password": "Admin@2024"
+        "email": "official.tishnu@gmail.com",
+        "password": "Access@404"
     })
     assert response.status_code == 200
     assert "access_token" in response.json()
@@ -289,8 +289,8 @@ async def login(login_data: schemas.LoginRequest):
     **Example:**
     ```json
     {
-      "email": "admin@poornasree.ai", 
-      "password": "Admin@2024"
+      "email": "official.tishnu@gmail.com", 
+      "password": "Access@404"
     }
     ```
     """

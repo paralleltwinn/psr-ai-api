@@ -15,7 +15,7 @@
 - ✅ Created professional README with full API documentation
 
 ### 🔐 **Authentication System**
-- ✅ Super admin login working with credentials: `admin@poornasree.ai / PoornasreeAI@2025!`
+- ✅ Super admin login working with credentials: `official.tishnu@gmail.com / Access@404`
 - ✅ Frontend login form with dynamic password field for admin users
 - ✅ Backend properly configured with role-based authentication
 - ✅ Database schema updated with customer/engineer specific fields
@@ -40,7 +40,7 @@ The authentication system is **fully functional** and ready for use:
 # Test super admin login
 curl -X POST "http://localhost:8000/api/v1/auth/login" \
      -H "Content-Type: application/json" \
-     -d '{"email": "admin@poornasree.ai", "password": "PoornasreeAI@2025!"}'
+     -d '{"email": "official.tishnu@gmail.com", "password": "Access@404"}'
 
 # Check API health
 curl http://localhost:8000/health
