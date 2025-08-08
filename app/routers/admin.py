@@ -604,3 +604,108 @@ async def email_reject_engineer(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to reject engineer application"
         )
+
+
+# =============================================================================
+# USER MANAGEMENT ENDPOINTS
+# =============================================================================
+
+@router.put("/users/{user_id}/activate", response_model=schemas.APISuccessResponse)
+async def activate_user(
+    user_id: int,
+    current_user: User = Depends(require_admin_or_above),
+    db: Session = Depends(get_db)
+):
+    """Activate a user account (Admin only)"""
+    try:
+        # Get the user to activate
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Cannot activate super admin accounts unless you are super admin
+        if user.role == UserRole.SUPER_ADMIN and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot modify super admin accounts"
+            )
+        
+        # Activate the user
+        user.is_active = True
+        user.status = UserStatus.ACTIVE
+        db.commit()
+        
+        # Log the action
+        logger.info(f"Admin {current_user.email} activated user {user.email}")
+        
+        return schemas.APISuccessResponse(
+            success=True,
+            message=f"User '{user.first_name} {user.last_name}' activated successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error activating user: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to activate user"
+        )
+
+
+@router.put("/users/{user_id}/suspend", response_model=schemas.APISuccessResponse)
+async def suspend_user(
+    user_id: int,
+    current_user: User = Depends(require_admin_or_above),
+    db: Session = Depends(get_db)
+):
+    """Suspend a user account (Admin only)"""
+    try:
+        # Get the user to suspend
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Cannot suspend your own account
+        if user.id == current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot suspend your own account"
+            )
+        
+        # Cannot suspend super admin accounts unless you are super admin
+        if user.role == UserRole.SUPER_ADMIN and current_user.role != UserRole.SUPER_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot modify super admin accounts"
+            )
+        
+        # Suspend the user
+        user.is_active = False
+        user.status = UserStatus.SUSPENDED
+        db.commit()
+        
+        # Log the action
+        logger.info(f"Admin {current_user.email} suspended user {user.email}")
+        
+        return schemas.APISuccessResponse(
+            success=True,
+            message=f"User '{user.first_name} {user.last_name}' suspended successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error suspending user: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to suspend user"
+        )
