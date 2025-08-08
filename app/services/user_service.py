@@ -616,7 +616,7 @@ class UserService:
             application.reviewer_id = reviewer_id
             application.reviewed_at = datetime.utcnow()
             if reason:
-                application.rejection_reason = reason
+                application.review_notes = reason
             
             self.db.commit()
             self.db.refresh(application)

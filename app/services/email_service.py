@@ -322,17 +322,34 @@ def get_welcome_email_template(user_name: str, user_role: str) -> str:
     """
 
 
-def get_engineer_application_template(engineer_name: str, engineer_email: str, application_id: int, admin_token: str = None) -> str:
-    """Get HTML template for engineer application notification with approve/reject buttons."""
+def get_engineer_application_template(engineer_name: str, engineer_email: str, application_id: int, approve_token: str = None, reject_token: str = None) -> str:
+    """Get HTML template for engineer application notification with direct action buttons."""
     
-    # Base URLs for approve/reject actions
-    base_url = settings.frontend_url or "http://localhost:3000"
+    # Base URLs for actions
     api_base_url = settings.api_base_url or "http://localhost:8000"
+    dashboard_url = f"{settings.frontend_url or 'http://localhost:3000'}/dashboard"
     
-    # Create action URLs
-    approve_url = f"{api_base_url}/admin/engineers/{application_id}/approve"
-    reject_url = f"{api_base_url}/admin/engineers/{application_id}/reject"
-    dashboard_url = f"{base_url}/dashboard"
+    # Create direct action URLs if tokens are provided
+    if approve_token and reject_token:
+        approve_url = f"{api_base_url}/api/v1/admin/email-action/approve/{approve_token}"
+        reject_url = f"{api_base_url}/api/v1/admin/email-action/reject/{reject_token}"
+        action_buttons = f"""
+            <div class="action-buttons">
+                <a href="{approve_url}" class="approve-btn">✅ APPROVE APPLICATION</a>
+                <a href="{reject_url}" class="reject-btn">❌ REJECT APPLICATION</a>
+            </div>
+            
+            <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #28a745;">
+                <p><strong>🚀 One-Click Actions:</strong> Click the buttons above to instantly approve or reject this application. No login required!</p>
+                <p><small>⚠️ These action links expire in 7 days and are unique to your email address.</small></p>
+            </div>
+        """
+    else:
+        action_buttons = f"""
+            <div class="action-buttons">
+                <a href="{dashboard_url}" class="approve-btn">Go to Dashboard</a>
+            </div>
+        """
     
     return f"""
     <!DOCTYPE html>
@@ -347,12 +364,15 @@ def get_engineer_application_template(engineer_name: str, engineer_email: str, a
             .content {{ background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }}
             .applicant-info {{ background: white; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107; }}
             .action-buttons {{ text-align: center; margin: 30px 0; }}
-            .approve-btn {{ display: inline-block; background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 0 10px; font-weight: bold; }}
-            .reject-btn {{ display: inline-block; background: #dc3545; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 0 10px; font-weight: bold; }}
+            .approve-btn {{ display: inline-block; background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 0 10px; font-weight: bold; transition: background 0.3s; }}
+            .approve-btn:hover {{ background: #1e7e34; }}
+            .reject-btn {{ display: inline-block; background: #dc3545; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 0 10px; font-weight: bold; transition: background 0.3s; }}
+            .reject-btn:hover {{ background: #bd2130; }}
             .dashboard-btn {{ display: inline-block; background: #007bff; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; margin: 10px 0; }}
             .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 14px; }}
             .logo {{ font-size: 24px; font-weight: bold; }}
             .urgent {{ background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+            .security-note {{ background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 12px; color: #666; margin-top: 20px; }}
         </style>
     </head>
     <body>
@@ -378,21 +398,14 @@ def get_engineer_application_template(engineer_name: str, engineer_email: str, a
             </div>
             
             <h3>🚀 Quick Actions:</h3>
-            <div class="action-buttons">
-                <a href="{dashboard_url}" class="approve-btn">✅ APPROVE APPLICATION</a>
-                <a href="{dashboard_url}" class="reject-btn">❌ REJECT APPLICATION</a>
-            </div>
+            {action_buttons}
             
-            <div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <p><strong>💡 Quick Access:</strong> Click the buttons above to go directly to the admin dashboard where you can review detailed application information and take action.</p>
-            </div>
-            
-            <h3>📝 Review Checklist:</h3>
+            <h3>� Review Guidelines:</h3>
             <ul style="background: white; padding: 20px; border-radius: 5px;">
                 <li>✓ Verify applicant's email and contact information</li>
-                <li>✓ Review submitted skills and experience</li>
-                <li>✓ Check portfolio/work samples if provided</li>
-                <li>✓ Evaluate department fit and requirements</li>
+                <li>✓ Review submitted department and experience</li>
+                <li>✓ Check application completeness</li>
+                <li>✓ Evaluate fit for engineering role</li>
                 <li>✓ Make approval/rejection decision</li>
             </ul>
             
@@ -400,13 +413,17 @@ def get_engineer_application_template(engineer_name: str, engineer_email: str, a
                 <a href="{dashboard_url}" class="dashboard-btn">🏠 Go to Admin Dashboard</a>
             </div>
             
-            <p style="color: #6c757d; font-size: 14px; margin-top: 30px;">
-                <strong>Note:</strong> For detailed applicant information and to complete the review process, please access your admin dashboard.
-            </p>
+            <div class="security-note">
+                <p><strong>🔒 Security Notice:</strong> Action links are personalized and secure. They expire automatically and can only be used once.</p>
+            </div>
         </div>
+        
         <div class="footer">
-            <p>© 2024 Poornasree AI. All rights reserved.</p>
-            <p>Admin Notification System</p>
+            <p>This email was sent to you because you are an administrator for Poornasree AI.</p>
+            <p>If you believe this email was sent in error, please contact the system administrator.</p>
+            <p style="color: #999; font-size: 12px;">
+                © {datetime.now().year} Poornasree AI. All rights reserved.
+            </p>
         </div>
     </body>
     </html>
@@ -592,22 +609,53 @@ async def send_password_reset_email(user: User, reset_link: str) -> bool:
 
 
 async def send_engineer_application_notification(engineer: User, admin_emails: List[str], application_id: int) -> bool:
-    """Send engineer application notification to admins."""
+    """Send engineer application notification to admins with direct action buttons."""
     try:
-        subject = "🚨 NEW Engineer Application - Immediate Review Required"
-        html_content = get_engineer_application_template(
-            f"{engineer.first_name} {engineer.last_name}",
-            engineer.email,
-            application_id
-        )
+        from ..auth.auth import create_action_token
+        from datetime import timedelta
         
-        results = email_service.send_bulk_email(
-            recipients=admin_emails,
-            subject=subject,
-            html_content=html_content
-        )
+        subject = "🚨 NEW Engineer Application - Take Action Now"
         
-        return any(results.values())
+        # Send personalized emails to each admin with their own action tokens
+        results = []
+        for admin_email in admin_emails:
+            # Create secure action tokens for this specific admin
+            approve_token = create_action_token(
+                data={
+                    "application_id": application_id,
+                    "admin_email": admin_email,
+                    "action": "approve"
+                },
+                expires_delta=timedelta(days=7)
+            )
+            
+            reject_token = create_action_token(
+                data={
+                    "application_id": application_id,
+                    "admin_email": admin_email,
+                    "action": "reject"
+                },
+                expires_delta=timedelta(days=7)
+            )
+            
+            # Generate personalized email content
+            html_content = get_engineer_application_template(
+                f"{engineer.first_name} {engineer.last_name}",
+                engineer.email,
+                application_id,
+                approve_token=approve_token,
+                reject_token=reject_token
+            )
+            
+            # Send individual email
+            result = email_service.send_email(
+                to_email=admin_email,
+                subject=subject,
+                html_content=html_content
+            )
+            results.append(result)
+        
+        return any(results)
     except Exception as e:
         logger.error(f"Failed to send engineer application notification: {e}")
         return False

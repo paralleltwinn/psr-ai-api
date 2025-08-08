@@ -7,10 +7,12 @@ Admin endpoints for user management and dashboard statistics.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
 from datetime import datetime
+import logging
 
 # Import from reorganized modules
 from ..api import schemas
@@ -26,6 +28,9 @@ from ..database.database import get_db
 from ..auth.dependencies import require_admin_or_above, require_super_admin, get_current_active_user
 from ..auth.auth import get_password_hash, verify_password
 from ..core.constants import UserRole, UserStatus
+from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -86,7 +91,7 @@ async def get_pending_engineers(
         service = UserService(db)
         applications = service.get_pending_engineer_applications(skip=skip, limit=limit)
         
-        return [EngineerApplicationResponse.from_orm(app) for app in applications]
+        return [EngineerApplicationResponse.model_validate(app) for app in applications]
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -94,9 +99,9 @@ async def get_pending_engineers(
         )
 
 
-@router.put("/engineers/{engineer_id}/approve", response_model=EngineerApplicationResponse)
+@router.put("/engineers/{application_id}/approve", response_model=EngineerApplicationResponse)
 async def approve_engineer(
-    engineer_id: int,
+    application_id: int,
     current_user: User = Depends(require_admin_or_above),
     db: Session = Depends(get_db)
 ):
@@ -104,7 +109,7 @@ async def approve_engineer(
     try:
         service = UserService(db)
         approved_application = service.approve_engineer_application(
-            application_id=engineer_id,
+            application_id=application_id,
             reviewer_id=current_user.id
         )
         
@@ -114,7 +119,7 @@ async def approve_engineer(
         except Exception as email_error:
             print(f"Failed to send approval email: {email_error}")
         
-        return EngineerApplicationResponse.from_orm(approved_application)
+        return EngineerApplicationResponse.model_validate(approved_application)
     except HTTPException:
         raise
     except Exception as e:
@@ -124,9 +129,9 @@ async def approve_engineer(
         )
 
 
-@router.put("/engineers/{engineer_id}/reject", response_model=EngineerApplicationResponse)
+@router.put("/engineers/{application_id}/reject", response_model=EngineerApplicationResponse)
 async def reject_engineer(
-    engineer_id: int,
+    application_id: int,
     review_data: ApplicationReviewRequest,
     current_user: User = Depends(require_admin_or_above),
     db: Session = Depends(get_db)
@@ -135,7 +140,7 @@ async def reject_engineer(
     try:
         service = UserService(db)
         rejected_application = service.reject_engineer_application(
-            application_id=engineer_id,
+            application_id=application_id,
             reviewer_id=current_user.id,
             reason=review_data.reason
         )
@@ -148,7 +153,7 @@ async def reject_engineer(
         except Exception as email_error:
             print(f"Failed to send rejection email: {email_error}")
         
-        return EngineerApplicationResponse.from_orm(rejected_application)
+        return EngineerApplicationResponse.model_validate(rejected_application)
     except HTTPException:
         raise
     except Exception as e:
@@ -156,6 +161,8 @@ async def reject_engineer(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to reject engineer: {str(e)}"
         )
+
+
 @router.post("/create-admin", response_model=UserResponse)
 async def create_admin(
     admin_data: AdminCreateRequest,
@@ -180,7 +187,7 @@ async def create_admin(
         except Exception as email_error:
             print(f"Failed to send welcome email: {email_error}")
         
-        return UserResponse.from_orm(new_admin)
+        return UserResponse.model_validate(new_admin)
         
     except HTTPException:
         raise
@@ -242,7 +249,7 @@ async def update_super_admin_profile(
         return schemas.ProfileUpdateResponse(
             success=True,
             message="Profile updated successfully",
-            user=schemas.UserResponse.from_orm(current_user)
+            user=schemas.UserResponse.model_validate(current_user)
         )
         
     except HTTPException:
@@ -273,7 +280,7 @@ async def get_all_admins(
         return schemas.AdminListResponse(
             success=True,
             message="Admin users retrieved successfully",
-            admins=[schemas.UserResponse.from_orm(admin) for admin in admins],
+            admins=[schemas.UserResponse.model_validate(admin) for admin in admins],
             total_count=len(admins)
         )
         
@@ -423,4 +430,170 @@ async def deactivate_user(
                 "message": "Failed to deactivate user",
                 "error_code": "DEACTIVATION_FAILED"
             }
+        )
+
+
+# =============================================================================
+# EMAIL ACTION ENDPOINTS
+# =============================================================================
+
+@router.get("/email-action/approve/{token}")
+async def email_approve_engineer(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Approve engineer application via email token."""
+    try:
+        # Verify action token
+        from ..auth.auth import verify_action_token
+        payload = verify_action_token(token)
+        
+        # Extract data from token
+        application_id = payload.get("application_id")
+        admin_email = payload.get("admin_email")
+        action = payload.get("action")
+        
+        if not application_id or not admin_email or action != "approve":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid action token"
+            )
+        
+        # Get admin user
+        admin_user = user_service.get_user_by_email(db, admin_email)
+        if not admin_user or admin_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required"
+            )
+        
+        # Approve the application
+        service = UserService(db)
+        approved_application = service.approve_engineer_application(
+            application_id=application_id,
+            reviewer_id=admin_user.id
+        )
+        
+        # Send approval email to engineer
+        try:
+            await email_service.send_engineer_approval_notification(approved_application.user)
+        except Exception as email_error:
+            logger.error(f"Failed to send approval email: {email_error}")
+        
+        # Return HTML response
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Application Approved - Poornasree AI</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                .container {{ max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                .success {{ color: #28a745; font-size: 24px; margin-bottom: 20px; }}
+                .info {{ color: #666; margin-bottom: 30px; }}
+                .btn {{ display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1 class="success">✅ Application Approved Successfully!</h1>
+                <p class="info">Engineer application for <strong>{approved_application.user.first_name} {approved_application.user.last_name}</strong> has been approved.</p>
+                <p class="info">The applicant has been notified via email and their account is now active.</p>
+                <a href="{settings.frontend_url or 'http://localhost:3000'}/dashboard" class="btn">Go to Dashboard</a>
+            </div>
+        </body>
+        </html>
+        """)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in email approve action: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to approve engineer application"
+        )
+
+
+@router.get("/email-action/reject/{token}")
+async def email_reject_engineer(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Reject engineer application via email token."""
+    try:
+        # Verify action token
+        from ..auth.auth import verify_action_token
+        payload = verify_action_token(token)
+        
+        # Extract data from token
+        application_id = payload.get("application_id")
+        admin_email = payload.get("admin_email")
+        action = payload.get("action")
+        
+        if not application_id or not admin_email or action != "reject":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid action token"
+            )
+        
+        # Get admin user
+        admin_user = user_service.get_user_by_email(db, admin_email)
+        if not admin_user or admin_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required"
+            )
+        
+        # Reject the application
+        service = UserService(db)
+        rejected_application = service.reject_engineer_application(
+            application_id=application_id,
+            reviewer_id=admin_user.id,
+            reason="Application reviewed and rejected via email action"
+        )
+        
+        # Send rejection email to engineer
+        try:
+            await email_service.send_engineer_rejection_notification(
+                rejected_application.user, 
+                "Application reviewed and rejected by admin"
+            )
+        except Exception as email_error:
+            logger.error(f"Failed to send rejection email: {email_error}")
+        
+        # Return HTML response
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Application Rejected - Poornasree AI</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8f9fa; }}
+                .container {{ max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                .warning {{ color: #dc3545; font-size: 24px; margin-bottom: 20px; }}
+                .info {{ color: #666; margin-bottom: 30px; }}
+                .btn {{ display: inline-block; background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1 class="warning">❌ Application Rejected</h1>
+                <p class="info">Engineer application for <strong>{rejected_application.user.first_name} {rejected_application.user.last_name}</strong> has been rejected.</p>
+                <p class="info">The applicant has been notified via email.</p>
+                <a href="{settings.frontend_url or 'http://localhost:3000'}/dashboard" class="btn">Go to Dashboard</a>
+            </div>
+        </body>
+        </html>
+        """)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in email reject action: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reject engineer application"
         )

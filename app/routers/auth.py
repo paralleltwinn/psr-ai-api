@@ -135,11 +135,25 @@ async def request_otp(
                 detail="User not found"
             )
         
-        # Only allow OTP login for admin and customer roles
-        if existing_user.role not in [UserRole.ADMIN, UserRole.CUSTOMER]:
+        # Only allow OTP login for admin, engineer, and customer roles
+        if existing_user.role not in [UserRole.ADMIN, UserRole.ENGINEER, UserRole.CUSTOMER]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OTP login not supported for this user type"
+            )
+        
+        # Check if user is active and approved (especially for engineers)
+        if not existing_user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Account is not active"
+            )
+        
+        # For engineers, ensure they are approved
+        if existing_user.role == UserRole.ENGINEER and existing_user.status != UserStatus.APPROVED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Engineer account is not yet approved for login"
             )
     
     elif otp_request.purpose == "registration":
@@ -435,12 +449,13 @@ async def register_engineer(
                 db.add(engineer_app)
             
             db.commit()
+            db.refresh(engineer_app)
             
             # Send notification to admins about updated application
             admin_users = user_service.get_users_by_role(db, UserRole.ADMIN)
             admin_emails = [admin.email for admin in admin_users]
             if admin_emails:
-                await email_service.send_engineer_application_notification(existing_user, admin_emails)
+                await email_service.send_engineer_application_notification(existing_user, admin_emails, engineer_app.id)
             
             return existing_user
         else:
@@ -474,12 +489,13 @@ async def register_engineer(
     )
     db.add(engineer_app)
     db.commit()
+    db.refresh(engineer_app)
     
     # Send notification to admins
     admin_users = user_service.get_users_by_role(db, UserRole.ADMIN)
     admin_emails = [admin.email for admin in admin_users]
     if admin_emails:
-        await email_service.send_engineer_application_notification(user, admin_emails)
+        await email_service.send_engineer_application_notification(user, admin_emails, engineer_app.id)
     
     return user
 

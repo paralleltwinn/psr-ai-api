@@ -67,6 +67,32 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
         )
 
 
+def create_action_token(data: dict, expires_delta: timedelta = None) -> str:
+    """Create JWT action token for email-based actions."""
+    try:
+        to_encode = data.copy()
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            # Action tokens expire in 7 days by default
+            expire = datetime.utcnow() + timedelta(days=7)
+        
+        to_encode.update({
+            "exp": expire,
+            "iat": datetime.utcnow(),
+            "type": "action"
+        })
+        
+        encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+        return encoded_jwt
+    except Exception as e:
+        logger.error(f"Action token creation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error creating action token"
+        )
+
+
 def verify_token(token: str) -> str:
     """Verify and decode JWT token, return email."""
     try:
@@ -97,6 +123,33 @@ def verify_token(token: str) -> str:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def verify_action_token(token: str) -> dict:
+    """Verify and decode action token, return payload."""
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        
+        # Check token type
+        token_type = payload.get("type")
+        if token_type != "action":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid action token type"
+            )
+        
+        return payload
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Action token has expired"
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate action token"
         )
     except jwt.JWTError as e:
         logger.warning(f"JWT verification error: {e}")
