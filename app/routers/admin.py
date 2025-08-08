@@ -18,7 +18,7 @@ import logging
 from ..api import schemas
 from ..api.schemas import (
     SuperAdminDashboardResponse, AdminDashboardResponse, SuperAdminStatsResponse, 
-    AdminStatsResponse, AdminCreateRequest, ApplicationReviewRequest, 
+    AdminStatsResponse, AdminCreateRequest, AdminCreateResponse, ApplicationReviewRequest, 
     EngineerApplicationResponse, UserResponse, AdminListResponse
 )
 from ..services import user_service, email_service
@@ -163,7 +163,7 @@ async def reject_engineer(
         )
 
 
-@router.post("/create-admin", response_model=UserResponse)
+@router.post("/create-admin", response_model=AdminCreateResponse)
 async def create_admin(
     admin_data: AdminCreateRequest,
     current_user: User = Depends(require_super_admin),
@@ -181,17 +181,24 @@ async def create_admin(
             department=admin_data.department
         )
         
-        # Send welcome email
+        # Send welcome email (don't let email errors affect admin creation)
         try:
-            await email_service.send_welcome_email(new_admin.email, new_admin.first_name)
+            await email_service.send_welcome_email(new_admin)
+            logger.info(f"Welcome email sent successfully to {new_admin.email}")
         except Exception as email_error:
-            print(f"Failed to send welcome email: {email_error}")
+            logger.warning(f"Admin created successfully but failed to send welcome email to {new_admin.email}: {email_error}")
         
-        return UserResponse.model_validate(new_admin)
+        logger.info(f"Admin user created successfully: {new_admin.email}")
+        return AdminCreateResponse(
+            success=True,
+            message=f"Admin user {new_admin.first_name} {new_admin.last_name} created successfully",
+            user=UserResponse.model_validate(new_admin)
+        )
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to create admin user: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create admin user"

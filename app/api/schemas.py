@@ -526,6 +526,13 @@ class AdminCreateRequest(BaseSchema):
     department: Optional[str] = Field(None, max_length=100)
 
 
+class AdminCreateResponse(BaseSchema):
+    """Admin Creation Response Schema"""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    user: UserResponse = Field(..., description="Created admin user details")
+
+
 class ApplicationReviewRequest(BaseSchema):
     """Application Review Request Schema"""
     reason: Optional[str] = Field(None, description="Reason for rejection (required for reject)")

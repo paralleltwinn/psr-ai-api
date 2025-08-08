@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 # =============================================================================
-# POORNASREE AI - COMPLETE DATABASE SETUP
+# POORNASREE AI - PRODUCTION DATABASE SETUP
 # =============================================================================
 
 """
-Complete database setup script for Poornasree AI Authentication System.
+Production database setup script for Poornasree AI Authentication System.
 This script handles:
 1. Database creation if it doesn't exist
 2. Table creation from SQLAlchemy models
 3. Super admin user creation
-4. Sample data creation for testing admin dashboards
-5. Database migration application
+4. Database migration application
+
+This script creates a clean production database with only the essential super admin user.
+No sample or test data is created - this is suitable for production deployment.
 """
 
 import sys
@@ -19,7 +21,6 @@ from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timedelta
 import pymysql
-import random
 
 # Add the current directory to Python path
 sys.path.append(str(Path(__file__).parent))
@@ -166,241 +167,11 @@ def create_super_admin():
             db.close()
         return False
 
-
-def create_sample_admin():
-    """Create a sample admin user for testing."""
-    try:
-        print("\n" + "="*60)
-        print("STEP 4: SAMPLE ADMIN CREATION")
-        print("="*60)
-        
-        # Create session
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        db = SessionLocal()
-        
-        # Check if sample admin already exists
-        existing_admin = db.query(User).filter(
-            User.email == "admin@poornasree.ai"
-        ).first()
-        
-        if existing_admin:
-            print(f"✅ Sample admin already exists: {existing_admin.email}")
-            db.close()
-            return True
-        
-        print("🔨 Creating sample admin user...")
-        
-        # Hash password
-        hashed_password = get_password_hash("Admin@123")
-        
-        sample_admin = User(
-            email="admin@poornasree.ai",
-            hashed_password=hashed_password,
-            first_name="Test",
-            last_name="Admin",
-            phone_number="+919876543211",
-            department="Engineering",
-            role=UserRole.ADMIN,
-            status=UserStatus.ACTIVE,
-            is_active=True,
-            created_at=datetime.utcnow() - timedelta(days=5),
-            updated_at=datetime.utcnow(),
-            last_login=datetime.utcnow() - timedelta(hours=2)
-        )
-        
-        db.add(sample_admin)
-        db.commit()
-        
-        print("✅ SAMPLE ADMIN CREATED SUCCESSFULLY!")
-        print("📧 Email: admin@poornasree.ai")
-        print("🔑 Password: Admin@123")
-        
-        db.close()
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error creating sample admin: {e}")
-        if 'db' in locals():
-            db.close()
-        return False
-
-
-def create_sample_data():
-    """Create sample users and engineer applications for testing dashboards."""
-    try:
-        print("\n" + "="*60)
-        print("STEP 5: SAMPLE DATA CREATION")
-        print("="*60)
-        
-        # Create session
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        db = SessionLocal()
-        
-        # Check if sample data already exists
-        existing_customers = db.query(User).filter(User.role == UserRole.CUSTOMER).count()
-        if existing_customers > 0:
-            print(f"✅ Sample data already exists ({existing_customers} customers found)")
-            db.close()
-            return True
-        
-        print("🔨 Creating sample customers...")
-        
-        # Sample departments for engineers
-        departments = ["Software Engineering", "Mechanical Engineering", "Electrical Engineering", "Civil Engineering", "Data Science"]
-        skills_list = [
-            "Python, FastAPI, React, MySQL",
-            "AutoCAD, SolidWorks, ANSYS, Manufacturing",
-            "Circuit Design, PCB Layout, Embedded Systems",
-            "Structural Design, Construction Management, AutoCAD",
-            "Machine Learning, Python, TensorFlow, Data Analytics"
-        ]
-        
-        # Create sample customers
-        customers = []
-        for i in range(15):
-            customer = User(
-                email=f"customer{i+1}@test.com",
-                hashed_password=get_password_hash("Customer@123"),
-                first_name=f"Customer",
-                last_name=f"{i+1:02d}",
-                phone_number=f"+91987654{3300+i}",
-                machine_model=f"Model-{random.choice(['X100', 'Y200', 'Z300', 'A400', 'B500'])}",
-                state=random.choice(["Karnataka", "Tamil Nadu", "Maharashtra", "Gujarat", "Kerala"]),
-                dealer=f"Dealer-{random.choice(['ABC', 'XYZ', 'PQR', 'LMN', 'DEF'])}",
-                role=UserRole.CUSTOMER,
-                status=UserStatus.ACTIVE,
-                is_active=random.choice([True, True, True, False]),  # 75% active
-                created_at=datetime.utcnow() - timedelta(days=random.randint(1, 30)),
-                updated_at=datetime.utcnow(),
-                last_login=datetime.utcnow() - timedelta(hours=random.randint(1, 168)) if random.choice([True, False]) else None
-            )
-            customers.append(customer)
-        
-        db.add_all(customers)
-        print(f"✅ Created {len(customers)} sample customers")
-        
-        # Create sample engineers (approved)
-        engineers = []
-        for i in range(8):
-            engineer = User(
-                email=f"engineer{i+1}@test.com",
-                hashed_password=get_password_hash("Engineer@123"),
-                first_name=f"Engineer",
-                last_name=f"{i+1:02d}",
-                phone_number=f"+91987654{4400+i}",
-                department=departments[i % len(departments)],
-                role=UserRole.ENGINEER,
-                status=UserStatus.APPROVED,
-                is_active=True,
-                created_at=datetime.utcnow() - timedelta(days=random.randint(10, 60)),
-                updated_at=datetime.utcnow(),
-                last_login=datetime.utcnow() - timedelta(hours=random.randint(1, 48))
-            )
-            engineers.append(engineer)
-        
-        db.add_all(engineers)
-        print(f"✅ Created {len(engineers)} approved engineers")
-        
-        # Create pending engineer applications
-        pending_applications = []
-        for i in range(5):
-            # Create user first
-            pending_user = User(
-                email=f"pending.engineer{i+1}@test.com",
-                hashed_password=get_password_hash("Pending@123"),
-                first_name=f"Pending",
-                last_name=f"Engineer{i+1:02d}",
-                phone_number=f"+91987654{5500+i}",
-                department=departments[i % len(departments)],
-                role=UserRole.CUSTOMER,  # Still customer until approved
-                status=UserStatus.PENDING,
-                is_active=True,
-                created_at=datetime.utcnow() - timedelta(days=random.randint(1, 7)),
-                updated_at=datetime.utcnow()
-            )
-            db.add(pending_user)
-            db.flush()  # Get the ID
-            
-            # Create application
-            application = EngineerApplication(
-                user_id=pending_user.id,
-                status=UserStatus.PENDING,
-                department=departments[i % len(departments)],
-                experience=f"{random.randint(1, 10)} years",
-                skills=skills_list[i % len(skills_list)],
-                portfolio=f"https://portfolio.example.com/engineer{i+1}",
-                cover_letter=f"I am passionate about {departments[i % len(departments)].lower()} and would like to contribute to your platform with my {random.randint(1, 10)} years of experience.",
-                created_at=datetime.utcnow() - timedelta(days=random.randint(1, 7))
-            )
-            pending_applications.append(application)
-        
-        db.add_all(pending_applications)
-        print(f"✅ Created {len(pending_applications)} pending engineer applications")
-        
-        # Create some rejected applications
-        rejected_applications = []
-        for i in range(3):
-            rejected_user = User(
-                email=f"rejected.engineer{i+1}@test.com",
-                hashed_password=get_password_hash("Rejected@123"),
-                first_name=f"Rejected",
-                last_name=f"Engineer{i+1:02d}",
-                phone_number=f"+91987654{6600+i}",
-                department=departments[i % len(departments)],
-                role=UserRole.CUSTOMER,
-                status=UserStatus.REJECTED,
-                is_active=False,
-                created_at=datetime.utcnow() - timedelta(days=random.randint(10, 30)),
-                updated_at=datetime.utcnow()
-            )
-            db.add(rejected_user)
-            db.flush()
-            
-            # Get admin user for reviewer
-            admin_user = db.query(User).filter(User.role == UserRole.ADMIN).first()
-            
-            application = EngineerApplication(
-                user_id=rejected_user.id,
-                status=UserStatus.REJECTED,
-                department=departments[i % len(departments)],
-                experience=f"{random.randint(1, 5)} years",
-                skills=skills_list[i % len(skills_list)],
-                portfolio=f"https://portfolio.example.com/rejected{i+1}",
-                cover_letter=f"Application for {departments[i % len(departments)].lower()} position.",
-                reviewer_id=admin_user.id if admin_user else None,
-                reviewed_at=datetime.utcnow() - timedelta(days=random.randint(5, 15)),
-                created_at=datetime.utcnow() - timedelta(days=random.randint(15, 35))
-            )
-            rejected_applications.append(application)
-        
-        db.add_all(rejected_applications)
-        print(f"✅ Created {len(rejected_applications)} rejected engineer applications")
-        
-        # Commit all changes
-        db.commit()
-        
-        print("\n📊 SAMPLE DATA SUMMARY:")
-        print(f"  • {len(customers)} Customers created")
-        print(f"  • {len(engineers)} Engineers created")
-        print(f"  • {len(pending_applications)} Pending applications")
-        print(f"  • {len(rejected_applications)} Rejected applications")
-        
-        db.close()
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error creating sample data: {e}")
-        if 'db' in locals():
-            db.rollback()
-            db.close()
-        return False
-
-
 def apply_migrations():
     """Apply database migrations using Alembic."""
     try:
         print("\n" + "="*60)
-        print("STEP 6: DATABASE MIGRATIONS")
+        print("STEP 4: DATABASE MIGRATIONS")
         print("="*60)
         
         import subprocess
@@ -443,8 +214,8 @@ def apply_migrations():
 
 def setup_complete_database():
     """Run complete database setup."""
-    print("🚀 STARTING COMPLETE DATABASE SETUP")
-    print("This will create database, tables, super admin, sample admin, and test data")
+    print("🚀 STARTING PRODUCTION DATABASE SETUP")
+    print("This will create database, tables, and super admin user")
     print()
     
     success = True
@@ -468,36 +239,24 @@ def setup_complete_database():
         print("❌ Super admin creation failed. Stopping setup.")
         return False
     
-    # Step 5: Create sample admin
-    if not create_sample_admin():
-        print("⚠️  Sample admin creation failed, but continuing...")
-    
-    # Step 6: Create sample data
-    if not create_sample_data():
-        print("⚠️  Sample data creation failed, but continuing...")
-    
     print("\n" + "="*60)
-    print("🎉 COMPLETE DATABASE SETUP FINISHED SUCCESSFULLY!")
+    print("🎉 PRODUCTION DATABASE SETUP FINISHED SUCCESSFULLY!")
     print("="*60)
     print("✅ Database created")
     print("✅ Tables created") 
     print("✅ Migrations applied")
     print("✅ Super admin user created")
-    print("✅ Sample admin user created")
-    print("✅ Sample test data created")
     print()
     print("👥 LOGIN CREDENTIALS:")
     print("📧 Super Admin: " + settings.super_admin_email)
     print("🔑 Password: " + settings.super_admin_password)
-    print("📧 Sample Admin: admin@poornasree.ai")
-    print("� Password: Admin@123")
     print()
-    print("�🚀 Your FastAPI application is now ready to run!")
+    print("🚀 Your FastAPI application is now ready for production!")
     print("📝 Use: python main.py")
-    print("🌐 Dashboard URLs:")
-    print("   • Super Admin: http://localhost:3000/dashboard")
-    print("   • Regular Admin: http://localhost:3000/dashboard")
-    print("   • API Docs: http://localhost:8000/docs")
+    print("🌐 URLs:")
+    print("   • Admin Dashboard: http://localhost:3000/dashboard")
+    print("   • API Documentation: http://localhost:8000/docs")
+    print("   • API Health Check: http://localhost:8000/health")
     print("="*60)
     
     return True

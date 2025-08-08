@@ -333,54 +333,127 @@ await email_service.send_otp_email(
 ### **HTML Email Templates**
 ```python
 # Professional HTML email templates with consistent branding
-def create_otp_email_template(user_name: str, otp_code: str, purpose: str) -> str:
-    """Create HTML template for OTP verification emails."""
+def get_base_email_template(title: str, content: str, primary_color: str = "#6366f1") -> str:
+    """Base modern email template with consistent design across all email types."""
     return f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-        <meta charset="UTF-8">
+        <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Poornasree AI - Verification Code</title>
+        <!-- Modern Material Design 3 styling -->
         <style>
-            .email-container {{ 
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                max-width: 600px; margin: 0 auto; padding: 20px;
-                background-color: #f8f9fa; border-radius: 8px;
-            }}
-            .otp-code {{ 
-                background-color: #007bff; color: white; 
-                padding: 15px 30px; font-size: 24px; font-weight: bold;
-                letter-spacing: 3px; border-radius: 6px; text-align: center;
-            }}
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto; }}
+            .email-container {{ max-width: 600px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}
+            .email-header {{ background: linear-gradient(135deg, {primary_color} 0%, #4f46e5 100%); }}
+            .cta-button {{ background: linear-gradient(135deg, {primary_color} 0%, #4f46e5 100%); }}
+            <!-- Responsive design and accessibility features -->
         </style>
     </head>
     <body>
         <div class="email-container">
-            <h2>Hello {user_name},</h2>
-            <p>Your verification code for {purpose}:</p>
-            <div class="otp-code">{otp_code}</div>
-            <p><strong>This code expires in 5 minutes.</strong></p>
+            <div class="email-header">
+                <div class="logo">🚀</div>
+                <h1 class="email-title">{title}</h1>
+                <p class="email-subtitle">Poornasree AI</p>
+            </div>
+            <div class="email-content">{content}</div>
+            <div class="email-footer">
+                <p>© 2025 Poornasree AI. All rights reserved.</p>
+            </div>
         </div>
     </body>
     </html>
     """
 
-# Comprehensive email service with error handling and logging
-class EmailService:
-    async def send_otp_email(self, to_email: str, otp_code: str, purpose: str, user_name: str) -> bool:
-        try:
-            html_content = create_otp_email_template(user_name, otp_code, purpose)
-            subject = f"Poornasree AI - Your {purpose.title()} Code: {otp_code}"
-            
-            success = self.send_email(to_email, subject, html_content)
-            if success:
-                logger.info(f"OTP email sent successfully to {to_email}")
-            return success
-        except Exception as e:
-            logger.error(f"Failed to send OTP email to {to_email}: {e}")
-            return False
+# Standardized email templates using base template
+def get_verification_email_template(user_name: str, verification_link: str) -> str:
+    """Email verification with modern design and clear call-to-action."""
+    content = f"""
+        <div class="greeting">Hello {user_name}!</div>
+        <p class="content-text">Welcome to Poornasree AI! Please verify your email address.</p>
+        <div class="text-center">
+            <a href="{verification_link}" class="cta-button">Verify Email Address</a>
+        </div>
+        <div class="highlight-box">
+            <p><strong>🔒 Security Notice:</strong> This link expires in 24 hours.</p>
+        </div>
+    """
+    return get_base_email_template("Email Verification", content, "#10b981")
+
+def get_otp_email_template(user_name: str, otp_code: str) -> str:
+    """OTP verification with secure code display and security information."""
+    content = f"""
+        <div class="greeting">Hello {user_name}!</div>
+        <p class="content-text">Your verification code for secure access:</p>
+        <div class="text-center">
+            <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); 
+                        color: white; font-size: 32px; font-weight: bold; 
+                        padding: 24px; border-radius: 12px; letter-spacing: 8px; 
+                        margin: 24px 0; display: inline-block;">
+                {otp_code}
+            </div>
+        </div>
+        <div class="info-list">
+            <p><strong>🛡️ Security Information:</strong></p>
+            <ul>
+                <li>Valid for <strong>10 minutes</strong> only</li>
+                <li>Never share this code with anyone</li>
+                <li>Contact support if you didn't request this</li>
+            </ul>
+        </div>
+    """
+    return get_base_email_template("Security Code", content)
+
+def get_welcome_email_template(user_name: str, user_role: str) -> str:
+    """Welcome email with role-specific features and onboarding guidance."""
+    features = get_role_features(user_role)  # Dynamic feature list
+    content = f"""
+        <div class="greeting">Welcome to Poornasree AI, {user_name}!</div>
+        <p class="content-text">
+            🎉 Your account has been successfully activated as a <strong>{user_role.title()}</strong>.
+        </p>
+        <div class="text-center">
+            <a href="http://localhost:3000/login" class="cta-button">Start Using Poornasree AI</a>
+        </div>
+        <div class="info-list">
+            <p><strong>✨ Your {user_role.title()} Features:</strong></p>
+            <ul>{features}</ul>
+        </div>
+    """
+    return get_base_email_template("Welcome to Poornasree AI", content, "#10b981")
+
+# Admin notification templates with action buttons
+def get_admin_engineer_application_template(engineer_name: str, engineer_email: str, 
+                                          application_id: int, approve_token: str = None, 
+                                          reject_token: str = None) -> str:
+    """Admin notification with direct action buttons for engineer applications."""
+    action_buttons = create_admin_action_buttons(approve_token, reject_token)
+    content = f"""
+        <div class="greeting">Admin Action Required!</div>
+        <p class="content-text">
+            ⏰ New engineer application requires immediate review and approval.
+        </p>
+        <div class="info-list">
+            <p><strong>👤 Applicant Details:</strong></p>
+            <ul>
+                <li><strong>Name:</strong> {engineer_name}</li>
+                <li><strong>Email:</strong> {engineer_email}</li>
+                <li><strong>Application ID:</strong> #{application_id}</li>
+            </ul>
+        </div>
+        {action_buttons}
+    """
+    return get_base_email_template("🚨 NEW Engineer Application", content, "#f59e0b")
 ```
+
+### **Email Template Design Principles**
+- **Material Design 3**: Modern gradients, typography, and spacing
+- **Responsive Layout**: Mobile-first design with adaptive breakpoints
+- **Accessibility**: High contrast ratios, semantic HTML, ARIA labels
+- **Brand Consistency**: Unified color schemes across all templates
+- **Security First**: Clear security notices and expiration information
+- **Professional Aesthetics**: Clean layouts with purposeful white space
 
 ### **Email Notification Types**
 - **OTP Verification** - Account email confirmation with secure codes
@@ -388,6 +461,14 @@ class EmailService:
 - **Engineer Applications** - Application status updates with admin notifications
 - **Admin Notifications** - System alerts and user management updates
 - **Security Alerts** - Login attempts and account security notifications
+
+### **Standardized Email Template System** ✅ COMPLETE
+- **Base Template**: `get_base_email_template()` provides consistent modern design
+- **Unified Styling**: All emails use Material Design 3 principles with professional gradients
+- **Responsive Design**: Mobile-first approach with adaptive layouts
+- **Brand Consistency**: Consistent color schemes, typography, and button styles
+- **Template Coverage**: 6+ standardized templates for all communication types
+- **Admin Actions**: Specialized admin notification templates with direct action buttons
 
 ## 🛡️ Security Best Practices
 
