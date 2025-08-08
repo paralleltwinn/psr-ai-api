@@ -260,39 +260,85 @@ class UserService:
             return []
     
     def get_user_stats(self) -> Dict[str, Any]:
-        """Get user statistics."""
+        """Get comprehensive user statistics for super admin dashboard."""
         try:
-            total_users = self.db.query(func.count(User.id)).scalar()
-            active_users = self.db.query(func.count(User.id)).filter(User.is_active == True).scalar()
-            approved_users = self.db.query(func.count(User.id)).filter(
-                User.status.in_([UserStatus.ACTIVE, UserStatus.APPROVED])
-            ).scalar()
+            # Total users
+            total_users = self.db.query(func.count(User.id)).scalar() or 0
             
             # Users by role
-            role_stats = {}
-            for role in UserRole:
-                count = self.db.query(func.count(User.id)).filter(User.role == role).scalar()
-                role_stats[role.value] = count
+            total_admins = self.db.query(func.count(User.id)).filter(
+                User.role == UserRole.ADMIN
+            ).scalar() or 0
+            
+            total_engineers = self.db.query(func.count(User.id)).filter(
+                User.role == UserRole.ENGINEER
+            ).scalar() or 0
+            
+            total_customers = self.db.query(func.count(User.id)).filter(
+                User.role == UserRole.CUSTOMER
+            ).scalar() or 0
+            
+            # Active/Inactive users
+            active_users = self.db.query(func.count(User.id)).filter(
+                User.is_active == True
+            ).scalar() or 0
+            
+            inactive_users = total_users - active_users
+            
+            # Engineer-specific stats
+            approved_engineers = self.db.query(func.count(User.id)).filter(
+                and_(
+                    User.role == UserRole.ENGINEER,
+                    User.status == UserStatus.APPROVED
+                )
+            ).scalar() or 0
+            
+            # Customer-specific stats
+            active_customers = self.db.query(func.count(User.id)).filter(
+                and_(
+                    User.role == UserRole.CUSTOMER,
+                    User.is_active == True
+                )
+            ).scalar() or 0
+            
+            # Engineer applications
+            pending_engineers = self.db.query(func.count(EngineerApplication.id)).filter(
+                EngineerApplication.status == UserStatus.PENDING
+            ).scalar() or 0
+            
+            rejected_engineers = self.db.query(func.count(EngineerApplication.id)).filter(
+                EngineerApplication.status == UserStatus.REJECTED
+            ).scalar() or 0
             
             # Recent registrations (last 7 days)
             week_ago = datetime.utcnow() - timedelta(days=7)
             recent_registrations = (
                 self.db.query(func.count(User.id))
                 .filter(User.created_at >= week_ago)
-                .scalar()
+                .scalar() or 0
             )
             
             return {
                 "total_users": total_users,
+                "total_admins": total_admins,
+                "total_engineers": total_engineers,
+                "total_customers": total_customers,
+                "pending_engineers": pending_engineers,
+                "approved_engineers": approved_engineers,
+                "rejected_engineers": rejected_engineers,
                 "active_users": active_users,
-                "approved_users": approved_users,
-                "users_by_role": role_stats,
-                "recent_registrations": recent_registrations
+                "inactive_users": inactive_users,
+                "active_customers": active_customers,
+                "recent_registrations": recent_registrations,
+                "last_updated": datetime.utcnow().isoformat()
             }
             
         except Exception as e:
-            logger.error(f"Error getting user stats: {e}")
-            return {}
+            logger.error(f"Error getting user stats: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve user statistics"
+            )
     
     def create_engineer_application(self, user_id: int) -> EngineerApplication:
         """Create engineer role application."""

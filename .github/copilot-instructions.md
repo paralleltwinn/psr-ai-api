@@ -2,7 +2,7 @@
 
 ## 🏗️ Project Overview
 
-This is a **comprehensive FastAPI authentication system** with role-based access control, built for **Poornasree AI**. The system provides secure user management, OTP verification, email services, and admin functionality with enterprise-grade security features.
+This is a **comprehensive FastAPI authentication system** with role-based access control, built for **Poornasree AI**. The system provides secure user management, OTP verification, email services, admin functionality, and AI integration with enterprise-grade security features.
 
 ## 📁 Project Structure
 
@@ -10,58 +10,85 @@ This is a **comprehensive FastAPI authentication system** with role-based access
 psr-ai-api/
 ├── app/                          # Main application package
 │   ├── api/                      # API layer
-│   │   └── schemas.py           # Pydantic request/response models
+│   │   └── schemas.py           # Pydantic request/response models (614 lines)
 │   ├── auth/                     # Authentication logic
-│   │   ├── auth.py              # Password hashing, JWT tokens, OTP generation
+│   │   ├── auth.py              # Password hashing, JWT tokens, OTP generation (266 lines)
 │   │   └── dependencies.py      # Auth dependencies & middleware
 │   ├── core/                     # Core utilities
-│   │   ├── constants.py         # Enums (UserRole, UserStatus, etc.)
+│   │   ├── constants.py         # Enums (UserRole, UserStatus, etc.) (153 lines)
 │   │   └── logging.py           # Logging configuration
 │   ├── database/                 # Database layer
 │   │   ├── database.py          # SQLAlchemy setup & session management
-│   │   └── models.py            # Database models (User, OTP, etc.)
+│   │   └── models.py            # Database models (User, OTP, etc.) (191 lines)
 │   ├── routers/                  # API endpoints
-│   │   ├── auth.py              # Authentication endpoints
-│   │   ├── admin.py             # Admin management endpoints
-│   │   └── users.py             # User profile endpoints
+│   │   ├── auth.py              # Authentication endpoints (547 lines)
+│   │   ├── admin.py             # Admin management endpoints (607 lines)
+│   │   ├── users.py             # User profile endpoints
+│   │   ├── ai.py                # AI service endpoints (330 lines)
+│   │   └── database.py          # Database management endpoints
 │   ├── services/                 # Business logic
-│   │   ├── email_service.py     # Email/SMTP service with HTML templates
-│   │   └── user_service.py      # User business logic & application management
+│   │   ├── email_service.py     # Email/SMTP service with HTML templates (1052 lines)
+│   │   ├── user_service.py      # User business logic & application management (743 lines)
+│   │   └── ai_service.py        # Weaviate & Google AI integration (301 lines)
 │   ├── templates/                # HTML email templates
-│   └── config.py                # Configuration management with Pydantic Settings
+│   │   └── index.html           # Base HTML template
+│   └── config.py                # Configuration management with Pydantic Settings (108 lines)
 ├── alembic/                      # Database migrations
-├── logs/                         # Application logs
-├── main.py                       # FastAPI application entry point
-├── init.py                       # Database setup script
-├── system_check.py               # System status verification
-└── requirements.txt              # Python dependencies
+│   ├── env.py                   # Alembic environment configuration
+│   └── script.py.mako           # Migration template
+├── logs/                         # Application logs directory
+├── main.py                       # FastAPI application entry point (234 lines)
+├── init.py                       # Production database setup script (267 lines)
+├── system_check.py               # System status verification (144 lines)
+├── cleanup_database.py           # Database cleanup utilities
+├── test_endpoints.py             # API endpoint testing
+├── requirements.txt              # Python dependencies (merged production requirements)
+├── setup.bat                     # Windows setup script
+├── setup.sh                      # Unix setup script
+└── alembic.ini                   # Alembic configuration
 ```
 
 ## 🎯 Key Technologies & Patterns
 
 ### **Framework & Architecture**
-- **FastAPI 0.104+** - Modern async web framework with automatic OpenAPI docs
-- **SQLAlchemy 2.0** - Async ORM with declarative models
-- **Alembic** - Database migration management
-- **Pydantic v2** - Data validation & serialization with enhanced performance
-- **MySQL 8.0** - Primary database with strict foreign key constraints
+- **FastAPI 0.104+** - Modern async web framework with automatic OpenAPI docs and Swagger UI
+- **SQLAlchemy 2.0** - Async ORM with declarative models and relationship management
+- **Alembic** - Database migration management with version control
+- **Pydantic v2** - Data validation & serialization with enhanced performance and type safety
+- **MySQL 8.0** - Primary database with strict foreign key constraints and ACID compliance
 - **Redis** - Caching layer for session management and rate limiting
+- **uvicorn[standard]** - ASGI server with WebSocket support and performance optimization
 
 ### **Authentication & Security**
-- **JWT Tokens** - Bearer token authentication with configurable expiration
-- **bcrypt** - Password hashing with salt rounds
-- **OTP Verification** - Time-based email verification with expiration
-- **Role-Based Access Control** - SUPER_ADMIN, ADMIN, ENGINEER, CUSTOMER hierarchy
-- **Session Management** - Secure token storage with automatic cleanup
-- **Audit Logging** - Complete activity tracking with IP and user agent capture
+- **JWT Tokens** - Bearer token authentication with configurable expiration and role-based claims
+- **bcrypt** - Password hashing with salt rounds (12 rounds for production security)
+- **OTP Verification** - Time-based email verification with 6-digit codes and expiration tracking
+- **Role-Based Access Control** - SUPER_ADMIN, ADMIN, ENGINEER, CUSTOMER hierarchy with granular permissions
+- **Session Management** - Secure token storage with automatic cleanup and refresh mechanisms
+- **Audit Logging** - Complete activity tracking with IP addresses, user agents, and request metadata
+- **Rate Limiting** - Protection against brute force attacks with configurable thresholds
+
+### **AI Integration & Services**
+- **Weaviate** - Vector database for semantic search and embeddings storage
+- **Google AI (Gemini)** - Large language model integration for AI-powered features
+- **Async AI Operations** - Non-blocking AI service calls with health monitoring
+- **Service Health Checks** - Comprehensive monitoring of AI service availability and performance
+
+### **Email & Communication**
+- **SMTP Integration** - Professional email service with HTML template support
+- **HTML Email Templates** - Modern responsive email designs with Material Design 3 principles
+- **Template Engine** - Centralized email template system with role-specific content
+- **Bulk Email Support** - Efficient mass email delivery with error tracking
+- **Notification System** - In-app notifications with read status and type categorization
 
 ### **Design Patterns**
-- **Repository Pattern** - Data access abstraction through service layer
-- **Service Layer** - Business logic separation from API endpoints
-- **Dependency Injection** - FastAPI dependencies for clean separation
-- **Factory Pattern** - Database session creation and management
-- **Strategy Pattern** - Multiple authentication methods (password/OTP)
-- **Observer Pattern** - Email notifications for user actions
+- **Repository Pattern** - Data access abstraction through service layer with clean interfaces
+- **Service Layer** - Business logic separation from API endpoints for maintainability
+- **Dependency Injection** - FastAPI dependencies for clean separation of concerns
+- **Factory Pattern** - Database session creation and management with connection pooling
+- **Strategy Pattern** - Multiple authentication methods (password/OTP) with pluggable implementations
+- **Observer Pattern** - Email notifications for user actions with event-driven architecture
+- **Singleton Pattern** - Configuration management and service initialization
 
 ## 🔑 Core Components
 
@@ -113,30 +140,44 @@ LoginAttempt        # Failed login tracking
 ### **API Structure**
 ```
 /api/v1/auth/*              # Public authentication endpoints
-├── /login                  # Password-based authentication
-├── /request-otp           # OTP request for login/registration
-├── /verify-otp            # OTP verification and login
-├── /register/customer     # Customer registration with OTP
-├── /register/engineer     # Engineer application submission
-└── /check-login-method    # Check user's available login methods
+├── /login                  # Password-based authentication with JWT token generation
+├── /request-otp           # OTP request for login/registration with email delivery
+├── /verify-otp            # OTP verification and automatic login with token issuance
+├── /register/customer     # Customer registration with OTP verification workflow
+├── /register/engineer     # Engineer application submission with admin approval workflow
+└── /check-login-method    # Check user's available login methods (password/OTP)
 
-/api/v1/admin/*            # Admin-only management endpoints  
-├── /dashboard             # Super admin dashboard statistics
-├── /stats                 # Admin dashboard statistics
-├── /engineers/pending     # Pending engineer applications
-├── /engineers/{id}/approve # Approve engineer application
-├── /engineers/{id}/reject  # Reject engineer application
-├── /create-admin          # Create new admin user
-└── /admins                # List all admin users
+/api/v1/admin/*            # Admin-only management endpoints with role-based access
+├── /dashboard             # Super admin dashboard statistics (user counts, system metrics)
+├── /stats                 # Admin dashboard statistics (limited scope for regular admins)
+├── /engineers/pending     # Pending engineer applications with pagination support
+├── /engineers/{id}/approve # Approve engineer application with email notifications
+├── /engineers/{id}/reject  # Reject engineer application with reason and notifications
+├── /create-admin          # Create new admin user with role assignment
+├── /admins                # List all admin users with filtering and pagination
+└── /admins/{id}           # Delete admin user with security validation
 
 /api/v1/users/*           # User profile & notification endpoints
-├── /me                   # Current user profile
-├── /notifications        # User notifications
-└── /notifications/{id}/read # Mark notification as read
+├── /me                   # Current user profile with role-specific fields
+├── /me/update           # Update user profile information and preferences
+├── /me/change-password  # Change password with current password verification
+├── /notifications        # User notifications with read status and pagination
+└── /notifications/{id}/read # Mark notification as read with timestamp tracking
 
-/health                   # System health check endpoint
-/docs                     # Swagger/OpenAPI documentation
-/redoc                    # ReDoc API documentation
+/api/v1/ai/*              # AI service endpoints with health monitoring
+├── /health              # AI services health check (Weaviate + Google AI status)
+├── /chat                # AI chat interaction with conversation history
+├── /generate            # Text generation using Google AI models
+└── /search              # Semantic search using Weaviate vector database
+
+/api/v1/database/*        # Database management endpoints (admin only)
+├── /backup              # Create database backup with timestamp
+├── /restore             # Restore database from backup file
+└── /migrate             # Run database migrations and schema updates
+
+/health                   # System health check endpoint with comprehensive status
+/docs                     # Swagger/OpenAPI documentation with interactive testing
+/redoc                    # ReDoc API documentation with enhanced readability
 ```
 
 ## 📝 Coding Guidelines
@@ -198,6 +239,277 @@ except Exception as e:
 
 ### **Database Operations & Service Layer**
 ```python
+# Always use dependency injection for DB sessions
+@router.get("/users")
+async def get_users(db: Session = Depends(get_db)):
+    service = UserService(db)
+    return service.get_all_users()
+
+# Implement complex queries in service layer with proper error handling
+class UserService:
+    def __init__(self, db: Session):
+        self.db = db
+    
+    def get_pending_engineers(self, skip: int = 0, limit: int = 100) -> List[User]:
+        """Get pending engineer applications with related data."""
+        try:
+            return self.db.query(User).join(EngineerApplication).filter(
+                User.role == UserRole.ENGINEER,
+                User.status == UserStatus.PENDING,
+                EngineerApplication.status == UserStatus.PENDING
+            ).options(joinedload(User.engineer_applications)).offset(skip).limit(limit).all()
+        except Exception as e:
+            logger.error(f"Error fetching pending engineers: {e}")
+            raise HTTPException(status_code=500, detail="Database query failed")
+```
+
+### **Response Models & Validation**
+```python
+# Always define comprehensive Pydantic schemas for requests and responses
+@router.post("/register/customer", response_model=schemas.UserResponse)
+async def register_customer(
+    customer_data: schemas.CustomerRegistration,
+    db: Session = Depends(get_db)
+):
+    """Register new customer with OTP verification."""
+    # Implementation with proper validation
+    
+# Use detailed examples and validation in schemas
+class CustomerRegistration(BaseSchema):
+    email: EmailStr = Field(..., example="customer@example.com", description="Customer email address")
+    first_name: str = Field(..., min_length=1, max_length=100, example="John")
+    last_name: str = Field(..., min_length=1, max_length=100, example="Doe")
+    machine_model: str = Field(..., min_length=1, max_length=200, example="Model X1")
+    state: str = Field(..., min_length=1, max_length=100, example="California")
+    phone_number: str = Field(..., max_length=20, example="+1234567890")
+    otp_code: str = Field(..., min_length=6, max_length=6, example="123456")
+```
+
+## 🔐 Authentication Patterns
+
+### **Role-Based Access Control**
+```python
+# Use dependency injection for role checking with granular permissions
+@router.get("/admin/dashboard")
+async def get_dashboard(
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    """Only SUPER_ADMIN can access dashboard statistics."""
+    
+@router.put("/engineers/{engineer_id}/approve")
+async def approve_engineer(
+    engineer_id: int,
+    current_user: User = Depends(require_admin_or_above),
+    db: Session = Depends(get_db)
+):
+    """ADMIN and SUPER_ADMIN can approve engineers."""
+
+# Multiple role checking patterns
+async def require_admin_or_above(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
+```
+
+### **JWT Token Management**
+```python
+# Token creation with proper expiration and metadata
+access_token = auth.create_access_token(
+    data={"sub": user.email, "role": user.role.value}, 
+    expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
+)
+
+# Token validation with comprehensive error handling
+def verify_token(token: str) -> str:
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token validation failed")
+```
+
+### **OTP Verification & Email Integration**
+```python
+# Generate secure OTP with expiration tracking
+def generate_otp() -> str:
+    return ''.join(secrets.choice(string.digits) for _ in range(6))
+
+# OTP verification with attempt limiting
+async def verify_otp(db: Session, email: str, otp_code: str, purpose: str) -> bool:
+    verification = db.query(OTPVerification).filter(
+        OTPVerification.email == email,
+        OTPVerification.otp_code == otp_code,
+        OTPVerification.purpose == purpose,
+        OTPVerification.is_used == False,
+        OTPVerification.expires_at > datetime.utcnow()
+    ).first()
+    
+    if not verification:
+        return False
+    
+    # Mark as used and track attempts
+    verification.is_used = True
+    verification.attempts += 1
+    db.commit()
+    return True
+
+# Send OTP with professional email templates
+await email_service.send_otp_email(
+    to_email=email, 
+    otp_code=otp_code, 
+    purpose=purpose,
+    user_name=f"{user.first_name} {user.last_name}"
+)
+```
+
+## 📧 Email Service Patterns
+
+### **HTML Email Templates**
+```python
+# Professional HTML email templates with consistent branding
+def get_base_email_template(title: str, content: str, primary_color: str = "#6366f1") -> str:
+    """Base modern email template with consistent design across all email types."""
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <!-- Modern Material Design 3 styling -->
+        <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto; }}
+            .email-container {{ max-width: 600px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}
+            .email-header {{ background: linear-gradient(135deg, {primary_color} 0%, #4f46e5 100%); }}
+            .cta-button {{ background: linear-gradient(135deg, {primary_color} 0%, #4f46e5 100%); }}
+            <!-- Responsive design and accessibility features -->
+        </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="email-header">
+                <div class="logo">🚀</div>
+                <h1 class="email-title">{title}</h1>
+                <p class="email-subtitle">Poornasree AI</p>
+            </div>
+            <div class="email-content">{content}</div>
+            <div class="email-footer">
+                <p>© 2025 Poornasree AI. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+# Standardized email templates using base template
+def get_verification_email_template(user_name: str, verification_link: str) -> str:
+    """Email verification with modern design and clear call-to-action."""
+    content = f"""
+        <div class="greeting">Hello {user_name}!</div>
+        <p class="content-text">Welcome to Poornasree AI! Please verify your email address.</p>
+        <div class="text-center">
+            <a href="{verification_link}" class="cta-button">Verify Email Address</a>
+        </div>
+        <div class="highlight-box">
+            <p><strong>🔒 Security Notice:</strong> This link expires in 24 hours.</p>
+        </div>
+    """
+    return get_base_email_template("Email Verification", content, "#10b981")
+
+def get_otp_email_template(user_name: str, otp_code: str) -> str:
+    """OTP verification with secure code display and security information."""
+    content = f"""
+        <div class="greeting">Hello {user_name}!</div>
+        <p class="content-text">Your verification code for secure access:</p>
+        <div class="text-center">
+            <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); 
+                        color: white; font-size: 32px; font-weight: bold; 
+                        padding: 24px; border-radius: 12px; letter-spacing: 8px; 
+                        margin: 24px 0; display: inline-block;">
+                {otp_code}
+            </div>
+        </div>
+        <div class="info-list">
+            <p><strong>🛡️ Security Information:</strong></p>
+            <ul>
+                <li>Valid for <strong>10 minutes</strong> only</li>
+                <li>Never share this code with anyone</li>
+                <li>Contact support if you didn't request this</li>
+            </ul>
+        </div>
+    """
+    return get_base_email_template("Security Code", content)
+
+def get_welcome_email_template(user_name: str, user_role: str) -> str:
+    """Welcome email with role-specific features and onboarding guidance."""
+    features = get_role_features(user_role)  # Dynamic feature list
+    content = f"""
+        <div class="greeting">Welcome to Poornasree AI, {user_name}!</div>
+        <p class="content-text">
+            🎉 Your account has been successfully activated as a <strong>{user_role.title()}</strong>.
+        </p>
+        <div class="text-center">
+            <a href="http://localhost:3000/login" class="cta-button">Start Using Poornasree AI</a>
+        </div>
+        <div class="info-list">
+            <p><strong>✨ Your {user_role.title()} Features:</strong></p>
+            <ul>{features}</ul>
+        </div>
+    """
+    return get_base_email_template("Welcome to Poornasree AI", content, "#10b981")
+
+# Admin notification templates with action buttons
+def get_admin_engineer_application_template(engineer_name: str, engineer_email: str, 
+                                          application_id: int, approve_token: str = None, 
+                                          reject_token: str = None) -> str:
+    """Admin notification with direct action buttons for engineer applications."""
+    action_buttons = create_admin_action_buttons(approve_token, reject_token)
+    content = f"""
+        <div class="greeting">Admin Action Required!</div>
+        <p class="content-text">
+            ⏰ New engineer application requires immediate review and approval.
+        </p>
+        <div class="info-list">
+            <p><strong>👤 Applicant Details:</strong></p>
+            <ul>
+                <li><strong>Name:</strong> {engineer_name}</li>
+                <li><strong>Email:</strong> {engineer_email}</li>
+                <li><strong>Application ID:</strong> #{application_id}</li>
+            </ul>
+        </div>
+        {action_buttons}
+    """
+    return get_base_email_template("🚨 NEW Engineer Application", content, "#f59e0b")
+```
+
+### **Email Template Design Principles**
+- **Material Design 3**: Modern gradients, typography, and spacing
+- **Responsive Layout**: Mobile-first design with adaptive breakpoints
+- **Accessibility**: High contrast ratios, semantic HTML, ARIA labels
+- **Brand Consistency**: Unified color schemes across all templates
+- **Security First**: Clear security notices and expiration information
+- **Professional Aesthetics**: Clean layouts with purposeful white space
+
+### **Email Notification Types**
+- **OTP Verification** - Account email confirmation with secure codes
+- **Welcome Messages** - New user onboarding with brand introduction
+- **Engineer Applications** - Application status updates with admin notifications
+- **Admin Notifications** - System alerts and user management updates
+- **Security Alerts** - Login attempts and account security notifications
+
+### **Standardized Email Template System** ✅ COMPLETE
+- **Base Template**: `get_base_email_template()` provides consistent modern design
+- **Unified Styling**: All emails use Material Design 3 principles with professional gradients
+- **Responsive Design**: Mobile-first approach with adaptive layouts
+- **Brand Consistency**: Consistent color schemes, typography, and button styles
+- **Template Coverage**: 6+ standardized templates for all communication types
+- **Admin Actions**: Specialized admin notification templates with direct action buttons
 # Always use dependency injection for DB sessions
 @router.get("/users")
 async def get_users(db: Session = Depends(get_db)):
@@ -1167,3 +1479,33 @@ This authentication system provides:
 - 🚀 **Scalable Architecture** - Clean, maintainable codebase
 
 **Remember**: Always prioritize security, maintainability, and comprehensive documentation in your code!
+
+## Recent Updates
+
+### **Database Initialization Cleanup** ✅ COMPLETE
+- **Production Ready**: Database init script (`init.py`) cleaned of all sample data
+- **Sample Data Removed**: No more test customers, engineers, or sample admin accounts
+- **Clean Setup**: Only creates essential super admin user for production deployment
+- **Requirements Merged**: Combined requirements.txt and requirements-core.txt for simplified dependency management
+
+### **Email Template Standardization** ✅ COMPLETE
+- **Unified Design System**: All HTML email templates now use consistent modern design
+- **Base Template System**: Created get_base_email_template() with standardized styling
+- **Comprehensive Coverage**: Updated 6+ email templates (verification, OTP, welcome, application, approval, rejection)
+- **Modern Material Design**: Professional gradients, typography, and responsive layout
+- **Brand Consistency**: Unified color schemes, button styles, and layout structure across all emails
+- **Admin Notifications**: Separate admin notification template with action buttons for engineer applications
+
+### **Schema Validation Enhancement** ✅ COMPLETE
+- **Complete Schema Coverage**: All API endpoints now have proper Pydantic schemas for validation
+- **Dashboard Response Models**: Added SuperAdminDashboardResponse, AdminDashboardResponse, AdminDashboardStats
+- **Application Models**: Comprehensive EngineerApplicationResponse and review workflow schemas
+- **User Management**: Complete UserResponse, AdminCreateResponse, and AdminListResponse models
+- **Error Handling**: Robust schema validation with descriptive error messages
+
+### **AI Service Integration** ✅ COMPLETE
+- **Weaviate Integration**: Vector database service for semantic search capabilities
+- **Google AI Support**: Gemini model integration for text generation and AI features
+- **Health Monitoring**: Comprehensive AI service health checks and status reporting
+- **Async Operations**: Non-blocking AI service calls with proper error handling
+- **Service Abstraction**: Clean service layer abstraction for AI operations

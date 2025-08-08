@@ -79,6 +79,20 @@ class Settings(BaseSettings):
     # =============================================================================
     log_level: str = "INFO"
     log_file: str = "logs/app.log"
+    
+    # =============================================================================
+    # WEAVIATE CONFIGURATION
+    # =============================================================================
+    weaviate_url: str = ""
+    weaviate_grpc_url: str = ""
+    weaviate_api_key: str = ""
+    weaviate_cluster_name: str = ""
+    
+    # =============================================================================
+    # GOOGLE AI CONFIGURATION
+    # =============================================================================
+    google_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash-lite"
 
     class Config:
         env_file = ".env"

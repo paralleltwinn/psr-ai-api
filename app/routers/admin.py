@@ -19,7 +19,7 @@ from ..api import schemas
 from ..api.schemas import (
     SuperAdminDashboardResponse, AdminDashboardResponse, SuperAdminStatsResponse, 
     AdminStatsResponse, AdminCreateRequest, AdminCreateResponse, ApplicationReviewRequest, 
-    EngineerApplicationResponse, UserResponse, AdminListResponse
+    EngineerApplicationResponse, UserResponse, AdminListResponse, AdminDashboardStats
 )
 from ..services import user_service, email_service
 from ..services.user_service import UserService
@@ -70,7 +70,7 @@ async def get_admin_stats(
         return AdminDashboardResponse(
             success=True,
             message="Admin dashboard statistics retrieved successfully",
-            stats=AdminStatsResponse(**stats)
+            stats=AdminDashboardStats(**stats)
         )
     except Exception as e:
         raise HTTPException(

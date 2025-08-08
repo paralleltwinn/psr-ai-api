@@ -17,6 +17,8 @@ import logging
 # Import from reorganized modules
 from app.database.database import database, Base, engine
 from app.routers import auth_router, admin_router, users_router
+from app.routers.ai import router as ai_router
+from app.routers.database import router as database_router
 from app.config import settings
 
 # Set up logging
@@ -118,11 +120,19 @@ app = FastAPI(
         },
         {
             "name": "Admin",
-            "description": "⚙️ Administrative operations for user and system management",
+            "description": "👥 Administrative functions for user and system management",
         },
         {
             "name": "Users",
-            "description": "👥 User profile management and operations",
+            "description": "👤 User profile management and notifications",
+        },
+        {
+            "name": "AI Services",
+            "description": "🤖 AI services including Weaviate vector database and Google AI integration",
+        },
+        {
+            "name": "Database",
+            "description": "🗄️ MySQL database health monitoring and statistics",
         },
         {
             "name": "Health",
@@ -147,6 +157,8 @@ templates = Jinja2Templates(directory="app/templates")
 app.include_router(auth_router, prefix="/api/v1", tags=["Authentication"])
 app.include_router(admin_router, prefix="/api/v1", tags=["Admin"]) 
 app.include_router(users_router, prefix="/api/v1", tags=["Users"])
+app.include_router(ai_router, prefix="/api/v1", tags=["AI Services"])
+app.include_router(database_router, prefix="/api/v1", tags=["Database"])
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)

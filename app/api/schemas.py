@@ -6,10 +6,10 @@
 Pydantic schemas for request/response validation and serialization.
 """
 
-from pydantic import BaseModel, EmailStr, validator, Field
-from typing import Optional, List, Dict
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List, Dict, Any
 from datetime import datetime
-from ..core.constants import UserRole, UserStatus, NotificationType
+from ..core.constants import UserRole, UserStatus
 
 
 # =============================================================================
@@ -76,6 +76,21 @@ class UserListResponse(BaseSchema):
     page: int
     size: int
     pages: int
+
+
+# =============================================================================
+# NOTIFICATION SCHEMAS
+# =============================================================================
+
+class NotificationResponse(BaseSchema):
+    """Schema for notification response."""
+    id: int = Field(..., description="Notification ID")
+    user_id: int = Field(..., description="User ID")
+    type: str = Field(..., description="Notification type")
+    title: str = Field(..., description="Notification title")
+    message: str = Field(..., description="Notification message")
+    is_read: bool = Field(..., description="Read status")
+    created_at: datetime = Field(..., description="Creation timestamp")
 
 
 # =============================================================================
@@ -225,26 +240,6 @@ class EngineerRegistration(BaseSchema):
     state: str = Field(..., min_length=1, max_length=100, description="State/Province")
 
 
-class AdminCreation(BaseSchema):
-    """Schema for admin creation."""
-    email: EmailStr = Field(..., description="Admin email address")
-    password: str = Field(..., min_length=8, description="Admin password")
-    first_name: str = Field(..., min_length=1, max_length=100, description="Admin first name")
-    last_name: str = Field(..., min_length=1, max_length=100, description="Admin last name")
-    phone_number: Optional[str] = Field(None, max_length=20, description="Admin phone number")
-    department: str = Field(..., min_length=1, max_length=100, description="Admin department")
-
-
-class SuperAdminProfileUpdate(BaseSchema):
-    """Schema for updating super admin profile."""
-    email: Optional[EmailStr] = Field(None, description="New email address")
-    current_password: str = Field(..., min_length=8, description="Current password for verification")
-    new_password: Optional[str] = Field(None, min_length=8, description="New password (optional)")
-    first_name: Optional[str] = Field(None, min_length=1, max_length=100, description="First name")
-    last_name: Optional[str] = Field(None, min_length=1, max_length=100, description="Last name")
-    phone_number: Optional[str] = Field(None, max_length=20, description="Phone number")
-
-
 # =============================================================================
 # NOTIFICATION SCHEMAS
 # =============================================================================
@@ -261,15 +256,6 @@ class NotificationCreate(NotificationBase):
     recipient_id: int = Field(..., description="Recipient user ID")
     sender_id: Optional[int] = Field(None, description="Sender user ID")
     metadata_json: Optional[str] = Field(None, description="Additional metadata as JSON")
-
-
-class NotificationResponse(NotificationBase):
-    """Schema for notification response."""
-    id: int
-    is_read: bool
-    read_at: Optional[datetime] = None
-    created_at: datetime
-    sender: Optional[UserResponse] = None
 
 
 class NotificationListResponse(BaseSchema):
@@ -346,12 +332,34 @@ class SuperAdminProfileUpdate(BaseSchema):
     phone_number: Optional[str] = Field(None, max_length=20, description="New phone number")
 
 
+class AdminCreateRequest(BaseSchema):
+    """Schema for admin creation request."""
+    email: EmailStr = Field(..., description="Admin email address")
+    password: str = Field(..., min_length=8, max_length=100, description="Admin password")
+    first_name: str = Field(..., min_length=1, max_length=100, description="Admin first name")
+    last_name: str = Field(..., min_length=1, max_length=100, description="Admin last name")
+    phone_number: Optional[str] = Field(None, max_length=20, description="Admin phone number")
+    department: Optional[str] = Field(None, max_length=100, description="Department")
+
+
+class AdminCreateResponse(BaseSchema):
+    """Schema for admin creation response."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    admin: UserResponse = Field(..., description="Created admin data")
+
+
+class ApplicationReviewRequest(BaseSchema):
+    """Schema for application review request."""
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for rejection (required for rejection)")
+
+
 class AdminListResponse(BaseSchema):
-    """Response for admin list."""
+    """Schema for admin list response."""
     success: bool = Field(..., description="Operation success status")
     message: str = Field(..., description="Response message")
     admins: List[UserResponse] = Field(..., description="List of admin users")
-    total_count: int = Field(..., description="Total number of admins")
+    total: int = Field(..., description="Total number of admins")
 
 
 class AdminDashboardStats(BaseSchema):
@@ -421,10 +429,41 @@ class AdminDashboard(BaseSchema):
     pending_applications: List[EngineerApplicationResponse] = Field(..., description="Pending applications")
 
 
+class SuperAdminStatsResponse(BaseSchema):
+    """Schema for super admin dashboard statistics."""
+    total_users: int = Field(..., description="Total number of users")
+    total_admins: int = Field(..., description="Total number of admins")
+    total_engineers: int = Field(..., description="Total number of engineers")
+    total_customers: int = Field(..., description="Total number of customers")
+    pending_engineers: int = Field(..., description="Number of pending engineer applications")
+    active_users: int = Field(..., description="Number of active users")
+    inactive_users: int = Field(..., description="Number of inactive users")
+    approved_engineers: int = Field(..., description="Number of approved engineers")
+    rejected_engineers: int = Field(..., description="Number of rejected engineers")
+    active_customers: int = Field(..., description="Number of active customers")
+
+
+class SuperAdminDashboardResponse(BaseSchema):
+    """Response for super admin dashboard."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    stats: SuperAdminStatsResponse = Field(..., description="Super admin dashboard statistics")
+
+
+class AdminDashboardResponse(BaseSchema):
+    """Response for admin dashboard."""
+    success: bool = Field(..., description="Operation success status")
+    message: str = Field(..., description="Response message")
+    stats: AdminDashboardStats = Field(..., description="Admin dashboard statistics")
+
+
 class SuperAdminDashboard(AdminDashboard):
     """Schema for super admin dashboard."""
     recent_logins: List[dict] = Field(default=[], description="Recent login attempts")
     system_health: dict = Field(default={}, description="System health metrics")
+
+
+
 
 
 # =============================================================================
@@ -488,14 +527,6 @@ class DashboardStatsResponse(BaseSchema):
     stats: DashboardStats = Field(..., description="Dashboard statistics")
 
 
-class AdminListResponse(BaseSchema):
-    """Response for admin list operations."""
-    success: bool = Field(..., description="Operation success status")
-    message: str = Field(..., description="Response message")
-    admins: List[UserResponse] = Field(..., description="List of admin users")
-    total_count: int = Field(..., description="Total number of admins")
-
-
 class LoginMethodResponse(BaseSchema):
     """Response for login method check."""
     requires_password: bool = Field(..., description="Whether user requires password login")
@@ -513,60 +544,70 @@ class HealthCheck(BaseSchema):
 
 
 # =============================================================================
-# ADMIN DASHBOARD SCHEMAS
+# AI SERVICE SCHEMAS
 # =============================================================================
 
-class AdminCreateRequest(BaseSchema):
-    """Admin Creation Request Schema"""
-    email: EmailStr
-    password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
-    first_name: str = Field(..., min_length=1, max_length=100)
-    last_name: str = Field(..., min_length=1, max_length=100)
-    phone_number: Optional[str] = Field(None, max_length=20)
-    department: Optional[str] = Field(None, max_length=100)
+class TextGenerationRequest(BaseSchema):
+    """Schema for text generation requests."""
+    prompt: str = Field(..., min_length=1, max_length=10000, description="Text prompt for generation")
+    max_tokens: int = Field(default=1000, ge=1, le=4000, description="Maximum tokens to generate")
 
 
-class AdminCreateResponse(BaseSchema):
-    """Admin Creation Response Schema"""
-    success: bool = Field(..., description="Operation success status")
-    message: str = Field(..., description="Response message")
-    user: UserResponse = Field(..., description="Created admin user details")
+class TextGenerationResponse(BaseSchema):
+    """Schema for text generation responses."""
+    success: bool = Field(..., description="Generation success status")
+    generated_text: Optional[str] = Field(None, description="Generated text content")
+    model: str = Field(..., description="AI model used for generation")
+    prompt_length: int = Field(..., description="Length of input prompt")
+    response_length: int = Field(..., description="Length of generated response")
+    generated_by: str = Field(..., description="User who requested generation")
+    timestamp: str = Field(..., description="Generation timestamp")
 
 
-class ApplicationReviewRequest(BaseSchema):
-    """Application Review Request Schema"""
-    reason: Optional[str] = Field(None, description="Reason for rejection (required for reject)")
+class AIHealthResponse(BaseSchema):
+    """Schema for AI services health check response."""
+    timestamp: str = Field(..., description="Health check timestamp")
+    overall_status: str = Field(..., description="Overall health status")
+    services: Dict[str, Dict] = Field(..., description="Individual service health status")
+    errors: Optional[List[str]] = Field(None, description="List of errors if any")
 
 
-class AdminStatsResponse(BaseSchema):
-    """Admin Dashboard Stats Response Schema"""
-    total_engineers: int
-    approved_engineers: int
-    total_customers: int
-    active_customers: int
-    pending_engineers: int
-    rejected_engineers: int
-    last_updated: str
+class WeaviateStatusResponse(BaseSchema):
+    """Schema for Weaviate status response."""
+    service: str = Field(..., description="Service name")
+    available: bool = Field(..., description="Service availability")
+    connected: bool = Field(..., description="Connection status")
+    cluster_name: str = Field(..., description="Weaviate cluster name")
+    url: str = Field(..., description="Weaviate cluster URL")
+    version: Optional[str] = Field(None, description="Weaviate version")
+    collections: Optional[List[str]] = Field(None, description="Available collections")
+    modules: Optional[List[str]] = Field(None, description="Installed modules")
+    error: Optional[str] = Field(None, description="Error message if any")
 
 
-class SuperAdminStatsResponse(BaseSchema):
-    """Super Admin Dashboard Stats Response Schema"""
-    total_users: int
-    active_users: int
-    users_by_role: Dict[str, int]
-    users_by_status: Dict[str, int]
-    last_updated: str
+class GoogleAIStatusResponse(BaseSchema):
+    """Schema for Google AI status response."""
+    service: str = Field(..., description="Service name")
+    available: bool = Field(..., description="Service availability")
+    configured: bool = Field(..., description="Configuration status")
+    model: str = Field(..., description="Current AI model")
+    status: Optional[str] = Field(None, description="Service health status")
+    available_models: Optional[List[Dict]] = Field(None, description="Available AI models")
+    error: Optional[str] = Field(None, description="Error message if any")
 
 
-class AdminDashboardResponse(BaseSchema):
-    """Admin Dashboard Response Schema"""
-    success: bool = Field(..., description="Operation success status")
-    message: str = Field(..., description="Response message")
-    stats: AdminStatsResponse = Field(..., description="Admin dashboard statistics")
+class AIConfigResponse(BaseSchema):
+    """Schema for AI configuration response."""
+    weaviate: Dict[str, Any] = Field(..., description="Weaviate configuration")
+    google_ai: Dict[str, Any] = Field(..., description="Google AI configuration")
+    timestamp: str = Field(..., description="Configuration retrieval timestamp")
+    requested_by: str = Field(..., description="User who requested configuration")
 
 
-class SuperAdminDashboardResponse(BaseSchema):
-    """Super Admin Dashboard Response Schema"""
-    success: bool = Field(..., description="Operation success status")
-    message: str = Field(..., description="Response message")
-    stats: SuperAdminStatsResponse = Field(..., description="Super admin dashboard statistics")
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+def get_current_timestamp() -> str:
+    """Get current timestamp as ISO string."""
+    return datetime.utcnow().isoformat()
