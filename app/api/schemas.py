@@ -605,6 +605,127 @@ class AIConfigResponse(BaseSchema):
 
 
 # =============================================================================
+# AI TRAINING SCHEMAS
+# =============================================================================
+
+class TrainingConfig(BaseSchema):
+    """Schema for AI training configuration."""
+    learning_rate: Optional[float] = Field(0.001, description="Learning rate for training", ge=0.0001, le=0.1)
+    batch_size: Optional[int] = Field(32, description="Batch size for training", ge=1, le=128)
+    epochs: Optional[int] = Field(10, description="Number of training epochs", ge=1, le=100)
+    max_tokens: Optional[int] = Field(2048, description="Maximum tokens per training sample", ge=512, le=4096)
+    temperature: Optional[float] = Field(0.7, description="Temperature for text generation", ge=0.0, le=2.0)
+
+
+class StartTrainingRequest(BaseSchema):
+    """Schema for starting a training job."""
+    name: str = Field(..., min_length=1, max_length=200, description="Name for the training job")
+    file_ids: Optional[List[str]] = Field(default=[], description="List of uploaded file IDs to use for training (optional)")
+    training_config: Optional[TrainingConfig] = Field(default_factory=TrainingConfig, description="Training configuration parameters")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "Customer Support Training v1.0",
+                "file_ids": ["file-123", "file-456", "file-789"],
+                "training_config": {
+                    "learning_rate": 0.001,
+                    "batch_size": 32,
+                    "epochs": 10,
+                    "max_tokens": 2048,
+                    "temperature": 0.7
+                }
+            }
+        }
+
+
+class TrainingJobStatus(BaseSchema):
+    """Schema for training job status."""
+    job_id: str = Field(..., description="Unique training job identifier")
+    name: str = Field(..., description="Training job name")
+    status: str = Field(..., description="Current job status (queued, running, completed, failed)")
+    progress: int = Field(..., ge=0, le=100, description="Training progress percentage")
+    started_at: Optional[str] = Field(None, description="Job start timestamp")
+    estimated_completion: Optional[str] = Field(None, description="Estimated completion timestamp")
+    completed_at: Optional[str] = Field(None, description="Job completion timestamp")
+    file_count: int = Field(..., ge=0, description="Number of training files")
+    error_message: Optional[str] = Field(None, description="Error message if job failed")
+    created_by: str = Field(..., description="User who created the job")
+
+
+class TrainingJobsResponse(BaseSchema):
+    """Schema for training jobs list response."""
+    success: bool = Field(..., description="Success status")
+    jobs: List[TrainingJobStatus] = Field(..., description="List of training jobs")
+    total_jobs: int = Field(..., ge=0, description="Total number of jobs")
+    timestamp: str = Field(..., description="Response timestamp")
+
+
+class UploadTrainingDataResponse(BaseSchema):
+    """Schema for training data upload response."""
+    success: bool = Field(..., description="Upload success status")
+    message: str = Field(..., description="Success or error message")
+    files_processed: int = Field(..., ge=0, description="Number of files successfully processed")
+    total_size: str = Field(..., description="Total size of uploaded files")
+    file_ids: List[str] = Field(..., description="List of generated file IDs")
+    uploaded_by: str = Field(..., description="User who uploaded the files")
+    timestamp: str = Field(..., description="Upload timestamp")
+
+
+class StartTrainingResponse(BaseSchema):
+    """Schema for start training job response."""
+    success: bool = Field(..., description="Job start success status")
+    job_id: str = Field(..., description="Generated training job ID")
+    status: str = Field(..., description="Initial job status")
+    message: str = Field(..., description="Success message")
+    estimated_duration: str = Field(..., description="Estimated training duration")
+    file_count: int = Field(..., ge=0, description="Number of training files")
+    started_by: str = Field(..., description="User who started the job")
+    timestamp: str = Field(..., description="Job start timestamp")
+
+
+class DeleteTrainingFileResponse(BaseSchema):
+    """Schema for delete training file response."""
+    success: bool = Field(..., description="Deletion success status")
+    message: str = Field(..., description="Success or error message")
+    file_id: str = Field(..., description="ID of the deleted file")
+    deleted_by: str = Field(..., description="User who deleted the file")
+    timestamp: str = Field(..., description="Deletion timestamp")
+
+
+# =============================================================================
+# AI CHAT & SEARCH SCHEMAS
+# =============================================================================
+
+class ChatRequest(BaseSchema):
+    """Schema for AI chat request."""
+    message: str = Field(..., min_length=1, max_length=2000, description="User message to the AI")
+    conversation_id: Optional[str] = Field(None, description="Conversation ID for context")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "How can I upload training data?",
+                "conversation_id": "conv_123"
+            }
+        }
+
+
+class SearchRequest(BaseSchema):
+    """Schema for knowledge base search request."""
+    query: str = Field(..., min_length=1, max_length=500, description="Search query")
+    limit: Optional[int] = Field(5, ge=1, le=20, description="Maximum number of results to return")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "file upload process",
+                "limit": 5
+            }
+        }
+
+
+# =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
 

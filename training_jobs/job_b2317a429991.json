@@ -1,0 +1,24 @@
+{
+  "job_id": "job_b2317a429991",
+  "name": "Poornasree AI Training - 2025-08-09 01:51",
+  "file_ids": [
+    "file_25338a92_1754664701",
+    "file_98302354_1754664701",
+    "file_bf6a56da_1754664701"
+  ],
+  "training_config": {
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "epochs": 10,
+    "max_tokens": 2048,
+    "temperature": 0.7
+  },
+  "status": "completed",
+  "progress": 100,
+  "started_by": "official4tishnu@gmail.com",
+  "created_at": "2025-08-08T20:21:41.278526",
+  "file_count": 3,
+  "started_at": "2025-08-08T20:21:41.285682",
+  "current_step": "Training completed!",
+  "completed_at": "2025-08-08T20:22:11.650804"
+}
