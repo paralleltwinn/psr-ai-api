@@ -1,0 +1,24 @@
+This is a test document for Poornasree AI troubleshooting.
+
+Machine Troubleshooting Guide:
+
+1. Machine Continuously Vibrating:
+   - Check motor mounts for looseness
+   - Inspect drive belt alignment
+   - Verify motor speed settings
+   - Check for worn bearings
+
+2. Upload Training Data Process:
+   - Navigate to AI Training section
+   - Click Upload Files button
+   - Select PDF, DOC, or TXT files
+   - Wait for processing to complete
+   - Review uploaded files in the list
+
+3. Common Issues:
+   - File format not supported
+   - File size too large
+   - Network connection problems
+   - Server processing errors
+
+For additional support, contact Poornasree AI technical team.

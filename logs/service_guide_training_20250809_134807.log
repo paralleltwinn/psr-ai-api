@@ -1,0 +1,8 @@
+2025-08-09 13:48:07,931 - ServiceGuideTrainer - INFO - Logging initialized - Log file: logs\service_guide_training_20250809_134807.log
+2025-08-09 13:48:07,931 - ServiceGuideTrainer - INFO - Starting production Service Guide training workflow
+2025-08-09 13:48:07,947 - ServiceGuideTrainer - INFO - Performing system health check
+2025-08-09 13:48:07,947 - ServiceGuideTrainer - DEBUG - API Request: GET http://127.0.0.1:8000/api/v1/../../health (attempt 1)
+2025-08-09 13:48:07,947 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:8000
+2025-08-09 13:48:07,947 - urllib3.connectionpool - DEBUG - http://127.0.0.1:8000 "GET /health HTTP/1.1" 200 137
+2025-08-09 13:48:07,954 - ServiceGuideTrainer - DEBUG - API Request: GET http://127.0.0.1:8000/api/v1/ai/health (attempt 1)
+2025-08-09 13:48:11,583 - urllib3.connectionpool - DEBUG - http://127.0.0.1:8000 "GET /api/v1/ai/health HTTP/1.1" 200 1321

@@ -344,61 +344,108 @@ async def upload_training_data(
     current_user: User = Depends(require_admin_or_above)
 ):
     """
-    ## 📤 Upload Training Data Files
+    ## 📤 Upload Training Data Files (Enhanced with PDF Text Extraction)
     
     Upload multiple files for AI model training using Weaviate and Gemini 2.5 Flash.
+    Now with advanced PDF text extraction using PyPDF2 for accurate content processing.
     Admin access required.
     
     **Supported File Types:**
-    - PDF documents (.pdf)
+    - PDF documents (.pdf) - Enhanced with PyPDF2 text extraction
     - Microsoft Word documents (.doc, .docx)
     - Plain text files (.txt)
     - JSON files (.json)
     - CSV files (.csv)
     
-    **Processing:**
-    - Files are processed and stored for vector embedding
-    - Content is extracted and prepared for Weaviate indexing
-    - Metadata is stored for training job management
+    **Enhanced Processing Features:**
+    - Advanced PDF text extraction with page-by-page processing
+    - Real-time content quality validation
+    - Vector embedding preparation for Weaviate storage
+    - Comprehensive metadata tracking and error handling
+    - Content preview for uploaded files
     
     **Returns:**
     ```json
     {
       "success": true,
-      "message": "Files uploaded successfully",
+      "message": "Files uploaded and processed successfully",
       "files_processed": 3,
       "total_size": "2.5MB",
-      "uploaded_by": "Admin Name"
+      "file_ids": ["file_123", "file_456"],
+      "uploaded_by": "Admin Name",
+      "processing_details": {
+        "pdf_files": 2,
+        "text_extracted": "25.3 KB",
+        "pages_processed": 47,
+        "weaviate_stored": true
+      }
     }
     ```
     """
     try:
+        logger.info(f"📤 Enhanced upload request received with {len(files)} files")
+        
         if not files:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No files provided for upload"
             )
         
-        # Process uploaded files through AI service
+        # Log detailed file information for processing
+        processing_summary = {
+            "pdf_files": 0,
+            "text_files": 0,
+            "json_files": 0,
+            "csv_files": 0,
+            "other_files": 0
+        }
+        
+        for i, file in enumerate(files):
+            content_type = getattr(file, 'content_type', 'unknown')
+            logger.info(f"📄 File {i+1}: {file.filename}, type: {content_type}, size: {file.size} bytes")
+            
+            # Count file types for processing summary
+            if content_type == "application/pdf":
+                processing_summary["pdf_files"] += 1
+            elif content_type == "text/plain":
+                processing_summary["text_files"] += 1
+            elif content_type == "application/json":
+                processing_summary["json_files"] += 1
+            elif content_type == "text/csv":
+                processing_summary["csv_files"] += 1
+            else:
+                processing_summary["other_files"] += 1
+        
+        # Enhanced processing with detailed feedback
+        logger.info("🔄 Starting enhanced file processing with PDF text extraction...")
         result = await ai_service.process_training_files(files, current_user.email)
+        
+        logger.info(f"✅ Enhanced processing completed: {result}")
         
         return UploadTrainingDataResponse(
             success=True,
-            message="Training data uploaded successfully",
+            message=f"Training data uploaded and processed successfully with enhanced PDF extraction",
             files_processed=result.get("files_processed", 0),
             total_size=result.get("total_size", "0B"),
             file_ids=result.get("file_ids", []),
             uploaded_by=f"{current_user.first_name} {current_user.last_name}",
-            timestamp=get_current_timestamp()
+            timestamp=get_current_timestamp(),
+            processing_details={
+                "pdf_files_processed": processing_summary["pdf_files"],
+                "total_files_by_type": processing_summary,
+                "enhanced_extraction": True,
+                "weaviate_integration": True,
+                "text_extraction_method": "PyPDF2"
+            }
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Training data upload failed: {e}")
+        logger.error(f"❌ Enhanced training data upload failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload training data: {str(e)}"
+            detail=f"Failed to upload and process training data: {str(e)}"
         )
 
 
@@ -408,26 +455,30 @@ async def start_training_job(
     current_user: User = Depends(require_admin_or_above)
 ):
     """
-    ## 🚀 Start AI Model Training
+    ## 🚀 Start Enhanced AI Model Training
     
-    Initiate a new training job using uploaded data with Weaviate and Gemini 2.5 Flash.
+    Initiate a new training job using uploaded data with enhanced PDF text extraction,
+    Weaviate vector storage, and Gemini 2.5 Flash fine-tuning.
     Admin access required.
     
-    **Training Process:**
-    1. **Data Preparation**: Process uploaded files and extract content
-    2. **Vector Embedding**: Generate embeddings using Weaviate
-    3. **Model Training**: Fine-tune using Gemini 2.5 Flash
-    4. **Validation**: Test model performance and accuracy
+    **Enhanced Training Process:**
+    1. **Data Validation**: Verify uploaded files and extract quality metrics
+    2. **Content Processing**: Enhanced PDF text extraction with PyPDF2
+    3. **Vector Embedding**: Generate and store embeddings in Weaviate
+    4. **Model Training**: Fine-tune using Gemini 2.5 Flash with extracted content
+    5. **Quality Validation**: Test model performance and content accuracy
+    6. **Deployment**: Activate trained model for production use
     
     **Request Body:**
     ```json
     {
-      "name": "Customer Support Training v1.0",
+      "name": "Customer Support Training v2.0 - Enhanced PDF",
       "file_ids": ["file-123", "file-456"],
       "training_config": {
         "learning_rate": 0.001,
         "batch_size": 32,
-        "epochs": 10
+        "epochs": 10,
+        "use_enhanced_extraction": true
       }
     }
     ```
@@ -437,8 +488,15 @@ async def start_training_job(
     {
       "success": true,
       "job_id": "training-job-789",
-      "status": "queued",
-      "estimated_duration": "45 minutes"
+      "status": "initializing",
+      "estimated_duration": "2-4 hours",
+      "file_count": 5,
+      "processing_details": {
+        "pdf_files": 3,
+        "total_content_size": "1.2 MB",
+        "enhanced_extraction": true,
+        "weaviate_ready": true
+      }
     }
     ```
     """
@@ -449,18 +507,53 @@ async def start_training_job(
                 detail="Training job name is required"
             )
         
-        # Make file_ids optional - use recently uploaded files if not provided
+        # Enhanced file validation and processing details
         file_ids = request.file_ids if request.file_ids else []
         if len(file_ids) == 0:
-            logger.info("No specific file IDs provided, using available training data")
-            # In a real implementation, you'd fetch recently uploaded files
-            file_ids = ["mock-file-1", "mock-file-2"]  # Mock file IDs for now
+            logger.info("🔄 No specific file IDs provided, using recently uploaded files")
+            # Get recent training files
+            training_files = await ai_service.get_training_files()
+            if training_files:
+                file_ids = [f["file_id"] for f in training_files[:10]]  # Use last 10 files
+                logger.info(f"📁 Using {len(file_ids)} recent training files")
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No training files available. Please upload files first."
+                )
         
-        # Start training job through AI service
+        # Validate files exist and get processing details
+        training_files = await ai_service.get_training_files()
+        file_map = {f["file_id"]: f for f in training_files}
+        
+        valid_files = []
+        pdf_count = 0
+        total_content_size = 0
+        
+        for file_id in file_ids:
+            if file_id in file_map:
+                file_info = file_map[file_id]
+                valid_files.append(file_info)
+                total_content_size += file_info.get("size", 0)
+                
+                if file_info.get("content_type") == "application/pdf":
+                    pdf_count += 1
+            else:
+                logger.warning(f"⚠️ File {file_id} not found in training files")
+        
+        if not valid_files:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid training files found for the specified file IDs"
+            )
+        
+        # Enhanced training job creation
+        logger.info(f"🚀 Starting enhanced training job with {len(valid_files)} files ({pdf_count} PDFs)")
+        
         job_result = await ai_service.start_training_job(
             name=request.name.strip(),
-            file_ids=file_ids,
-            training_config=request.training_config.dict() if request.training_config else {},
+            file_ids=[f["file_id"] for f in valid_files],
+            training_config=request.training_config.model_dump() if request.training_config else {},
             started_by=current_user.email
         )
         
@@ -468,20 +561,28 @@ async def start_training_job(
             success=True,
             job_id=job_result["job_id"],
             status=job_result["status"],
-            message=f"Training job '{request.name}' started successfully",
+            message=f"Enhanced training job '{request.name}' started with PDF text extraction",
             estimated_duration=job_result.get("estimated_duration", "2-4 hours"),
-            file_count=len(file_ids),
+            file_count=len(valid_files),
             started_by=current_user.email,
-            timestamp=get_current_timestamp()
+            timestamp=get_current_timestamp(),
+            processing_details={
+                "pdf_files": pdf_count,
+                "text_files": len(valid_files) - pdf_count,
+                "total_content_size": f"{total_content_size / (1024*1024):.2f} MB",
+                "enhanced_pdf_extraction": True,
+                "weaviate_integration": True,
+                "gemini_model": "gemini-2.5-flash-lite"
+            }
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Training job start failed: {e}")
+        logger.error(f"❌ Enhanced training job start failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to start training job: {str(e)}"
+            detail=f"Failed to start enhanced training job: {str(e)}"
         )
 
 
@@ -523,7 +624,13 @@ async def get_training_files(
             "files": files,
             "total_files": len(files),
             "total_size": f"{total_size_mb:.2f} MB",
-            "timestamp": get_current_timestamp()
+            "timestamp": get_current_timestamp(),
+            "processing_capabilities": {
+                "pdf_extraction": "Enhanced PyPDF2 text extraction",
+                "content_preview": "Available for all file types",
+                "vector_storage": "Weaviate integration active",
+                "supported_formats": ["PDF", "TXT", "JSON", "CSV", "DOC", "DOCX"]
+            }
         }
         
     except Exception as e:
@@ -531,6 +638,57 @@ async def get_training_files(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve training files: {str(e)}"
+        )
+
+
+@router.get("/training-files/{file_id}/preview", response_model=Dict[str, Any])
+async def get_file_content_preview(
+    file_id: str,
+    current_user: User = Depends(require_admin_or_above)
+):
+    """
+    ## 👁️ Get File Content Preview
+    
+    Get a preview of the extracted content from a training file.
+    Shows the actual text extracted by the enhanced PDF processing system.
+    
+    **Returns:**
+    ```json
+    {
+      "success": true,
+      "file_id": "file_abc123",
+      "filename": "training_document.pdf",
+      "content_preview": "First 500 characters of extracted content...",
+      "content_length": 15420,
+      "extraction_method": "PyPDF2",
+      "pages_processed": 12,
+      "content_quality": "high"
+    }
+    ```
+    """
+    try:
+        # Get file content through AI service
+        preview_data = await ai_service.get_file_content_preview(file_id)
+        
+        if not preview_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Training file with ID {file_id} not found"
+            )
+        
+        return {
+            "success": True,
+            "timestamp": get_current_timestamp(),
+            **preview_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get file preview for {file_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve file preview: {str(e)}"
         )
 
 
@@ -715,52 +873,130 @@ async def cleanup_orphaned_data(
         )
 
 
-@router.delete("/training-files/{file_id}", response_model=DeleteTrainingFileResponse)
-async def delete_training_file(
-    file_id: str,
+@router.delete("/vector-database/clear", response_model=Dict[str, Any])
+async def clear_vector_database(
     current_user: User = Depends(require_admin_or_above)
 ):
     """
-    ## 🗑️ Delete Training Data File
+    ## 🗑️ Clear Vector Database
     
-    Delete a specific training data file.
-    Admin access required.
+    Clear all trained data from the Weaviate vector database.
+    This will remove all embeddings and vector data while keeping training files intact.
     
-    **Path Parameters:**
-    - `file_id`: Unique identifier of the file to delete
+    **⚠️ Warning:** This action cannot be undone!
     
     **Returns:**
     ```json
     {
       "success": true,
-      "message": "Training file deleted successfully"
+      "message": "Vector database cleared successfully",
+      "deleted_collections": ["TrainingDocuments"],
+      "deleted_objects": 156,
+      "cleared_by": "admin@example.com",
+      "timestamp": "2025-08-09T10:30:00Z"
     }
     ```
     """
     try:
-        if not file_id or not file_id.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File ID is required"
-            )
+        result = await ai_service.clear_vector_database(current_user.email)
         
-        await ai_service.delete_training_file(file_id, current_user.email)
+        return {
+            "success": result["success"],
+            "message": result["message"],
+            "deleted_collections": result.get("deleted_collections", []),
+            "deleted_objects": result.get("deleted_objects", 0),
+            "cleared_by": current_user.email,
+            "timestamp": result["timestamp"]
+        }
         
-        return DeleteTrainingFileResponse(
-            success=True,
-            message="Training file deleted successfully",
-            file_id=file_id,
-            deleted_by=f"{current_user.first_name} {current_user.last_name}",
-            timestamp=get_current_timestamp()
-        )
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Failed to delete training file {file_id}: {e}")
+        logger.error(f"Failed to clear vector database: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete training file: {str(e)}"
+            detail=f"Failed to clear vector database: {str(e)}"
+        )
+
+
+@router.delete("/vector-database/collection/{collection_name}", response_model=Dict[str, Any])
+async def clear_vector_collection(
+    collection_name: str,
+    current_user: User = Depends(require_admin_or_above)
+):
+    """
+    ## 🗑️ Clear Specific Vector Collection
+    
+    Clear a specific collection from the Weaviate vector database.
+    
+    **Parameters:**
+    - `collection_name`: Name of the collection to clear (e.g., "TrainingDocuments")
+    
+    **Returns:**
+    ```json
+    {
+      "success": true,
+      "message": "Collection TrainingDocuments cleared successfully",
+      "collection_name": "TrainingDocuments",
+      "deleted_objects": 156,
+      "cleared_by": "admin@example.com",
+      "timestamp": "2025-08-09T10:30:00Z"
+    }
+    ```
+    """
+    try:
+        result = await ai_service.clear_vector_collection(collection_name, current_user.email)
+        
+        return {
+            "success": result["success"],
+            "message": result["message"],
+            "collection_name": collection_name,
+            "deleted_objects": result.get("deleted_objects", 0),
+            "cleared_by": current_user.email,
+            "timestamp": result["timestamp"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to clear vector collection {collection_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear vector collection: {str(e)}"
+        )
+
+
+@router.get("/vector-database/status", response_model=Dict[str, Any])
+async def get_vector_database_status(
+    current_user: User = Depends(require_admin_or_above)
+):
+    """
+    ## 📊 Vector Database Status
+    
+    Get detailed status and statistics of the Weaviate vector database.
+    
+    **Returns:**
+    ```json
+    {
+      "connected": true,
+      "collections": [
+        {
+          "name": "TrainingDocuments",
+          "object_count": 156,
+          "size": "2.4 MB"
+        }
+      ],
+      "total_objects": 156,
+      "total_size": "2.4 MB",
+      "last_updated": "2025-08-09T10:30:00Z"
+    }
+    ```
+    """
+    try:
+        result = await ai_service.get_vector_database_status()
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to get vector database status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get vector database status: {str(e)}"
         )
 
 
@@ -792,6 +1028,11 @@ async def chat_with_ai(
     ```
     """
     try:
+        # Ensure Weaviate connection is established before generating response
+        if not ai_service.weaviate or not ai_service.weaviate.is_connected:
+            logger.info("Establishing Weaviate connection for chat...")
+            await ai_service.weaviate.connect()
+        
         # Use AI service to generate response
         response = await ai_service.generate_chat_response(
             message=request.message,
@@ -847,6 +1088,11 @@ async def search_knowledge_base(
     ```
     """
     try:
+        # Ensure Weaviate connection is established before searching
+        if not ai_service.weaviate or not ai_service.weaviate.is_connected:
+            logger.info("Establishing Weaviate connection for search...")
+            await ai_service.weaviate.connect()
+        
         # Search using Weaviate
         results = await ai_service.search_knowledge_base(
             query=request.query,

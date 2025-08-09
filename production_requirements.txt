@@ -1,0 +1,29 @@
+# Production Service Guide Trainer Requirements
+# Enterprise-grade dependencies for production training system
+
+# Core HTTP and API client
+requests>=2.31.0
+
+# PDF processing libraries (production-grade)
+PyPDF2>=3.0.1
+pdfplumber>=0.9.0
+
+# Enhanced logging and monitoring
+colorama>=0.4.6
+rich>=13.0.0
+
+# Optional performance enhancers
+python-dotenv>=1.0.0
+urllib3>=2.0.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# JSON processing (built-in but explicit for clarity)
+# json - built-in module
+# datetime - built-in module
+# logging - built-in module
+# tempfile - built-in module
+# hashlib - built-in module
+# traceback - built-in module

@@ -1,0 +1,25 @@
+2025-08-09 12:10:13,692 - ServiceGuideTrainer - INFO - Logging initialized - Log file: logs\service_guide_training_20250809_121013.log
+2025-08-09 12:10:13,692 - ServiceGuideTrainer - INFO - Starting production Service Guide training workflow
+2025-08-09 12:10:13,692 - ServiceGuideTrainer - INFO - Performing system health check
+2025-08-09 12:10:13,692 - ServiceGuideTrainer - DEBUG - API Request: GET http://127.0.0.1:8000/api/v1/../../health (attempt 1)
+2025-08-09 12:10:13,692 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 127.0.0.1:8000
+2025-08-09 12:10:16,730 - urllib3.connectionpool - DEBUG - http://127.0.0.1:8000 "GET /health HTTP/1.1" 200 137
+2025-08-09 12:10:16,732 - ServiceGuideTrainer - DEBUG - API Request: GET http://127.0.0.1:8000/api/v1/ai/health (attempt 1)
+2025-08-09 12:10:17,975 - urllib3.connectionpool - DEBUG - http://127.0.0.1:8000 "GET /api/v1/ai/health HTTP/1.1" 200 1321
+2025-08-09 12:10:17,975 - ServiceGuideTrainer - INFO - Authenticating with API...
+2025-08-09 12:10:17,975 - ServiceGuideTrainer - DEBUG - API Request: POST http://127.0.0.1:8000/api/v1/auth/login (attempt 1)
+2025-08-09 12:10:18,225 - urllib3.connectionpool - DEBUG - http://127.0.0.1:8000 "POST /api/v1/auth/login HTTP/1.1" 200 584
+2025-08-09 12:10:18,225 - ServiceGuideTrainer - INFO - Authentication successful - User: tishnu t (admin)
+2025-08-09 12:10:18,225 - ServiceGuideTrainer - INFO - Extracting text from PDF: training_data/Service Guide.pdf
+2025-08-09 12:10:18,225 - ServiceGuideTrainer - INFO - PDF file size: 110,758 bytes (0.11 MB)
+2025-08-09 12:10:18,228 - ServiceGuideTrainer - INFO - Attempting extraction with PyPDF2
+2025-08-09 12:10:18,288 - ServiceGuideTrainer - DEBUG - PDF pages: 10
+2025-08-09 12:10:18,554 - ServiceGuideTrainer - INFO - Successful extraction with PyPDF2 - 13,575 characters
+2025-08-09 12:10:18,556 - ServiceGuideTrainer - INFO - Creating text chunks for vector storage
+2025-08-09 12:10:18,558 - ServiceGuideTrainer - INFO - Created 10 chunks, average size: 1537 characters
+2025-08-09 12:10:18,558 - ServiceGuideTrainer - INFO - Uploading 10 chunks to training system
+2025-08-09 12:10:18,567 - ServiceGuideTrainer - INFO - Created training file: 17,593 bytes
+2025-08-09 12:10:18,569 - ServiceGuideTrainer - DEBUG - API Request: POST http://127.0.0.1:8000/api/v1/ai/upload-training-data (attempt 1)
+2025-08-09 12:10:18,580 - urllib3.connectionpool - DEBUG - http://127.0.0.1:8000 "POST /api/v1/ai/upload-training-data HTTP/1.1" 200 187
+2025-08-09 12:10:18,580 - ServiceGuideTrainer - INFO - Upload successful - Files processed: 0
+2025-08-09 12:10:18,589 - ServiceGuideTrainer - DEBUG - Cleaned up temporary directory: C:\Users\tishn\AppData\Local\Temp\service_guide_production_cq0s9wvd

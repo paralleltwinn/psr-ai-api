@@ -11,10 +11,11 @@ python-multipart==0.0.6
 
 # Database & ORM
 sqlalchemy==2.0.23
-alembic==1.12.1
+alembic==1.13.1
 pymysql==1.1.0
 aiomysql==0.2.0
-databases[mysql]==0.8.0
+# Note: databases package is incompatible with SQLAlchemy 2.x
+# Using direct SQLAlchemy async connections instead
 
 # Authentication & Security  
 python-jose[cryptography]==3.3.0
