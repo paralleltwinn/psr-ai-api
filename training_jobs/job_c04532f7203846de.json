@@ -1,0 +1,33 @@
+{
+  "job_id": "job_c04532f7203846de",
+  "name": "service guide",
+  "file_ids": [
+    "train_58d5225c8231"
+  ],
+  "training_config": {
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "epochs": 10,
+    "max_tokens": 2048,
+    "temperature": 0.7
+  },
+  "status": "completed",
+  "progress": 100,
+  "started_at": "2025-08-09T13:58:43.466572+00:00",
+  "started_by": "official4tishnu@gmail.com",
+  "estimated_duration": "2-4 hours",
+  "file_count": 1,
+  "current_step": "Training completed!",
+  "created_at": "2025-08-09T13:58:43.466572+00:00",
+  "processed_files": 1,
+  "processed_size": 13719,
+  "completed_at": "2025-08-09T14:00:01.476552+00:00",
+  "total_processing_time": 78,
+  "training_summary": {
+    "files_processed": 1,
+    "total_content_size": 13719,
+    "weaviate_connected": false,
+    "gemini_configured": false,
+    "chunks_created": 15
+  }
+}

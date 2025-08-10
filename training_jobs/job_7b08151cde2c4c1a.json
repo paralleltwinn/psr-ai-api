@@ -1,0 +1,35 @@
+{
+  "job_id": "job_7b08151cde2c4c1a",
+  "name": "s",
+  "file_ids": [
+    "train_0dc22e5708a3"
+  ],
+  "training_config": {
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "epochs": 10,
+    "max_tokens": 2048,
+    "temperature": 0.7
+  },
+  "status": "completed",
+  "progress": 100,
+  "started_at": "2025-08-10T17:28:40.014326+00:00",
+  "started_by": "official4tishnu@gmail.com",
+  "estimated_duration": "2-4 hours",
+  "file_count": 1,
+  "current_step": "Training completed!",
+  "created_at": "2025-08-10T17:28:40.014326+00:00",
+  "processed_files": 1,
+  "processed_size": 2445587,
+  "weaviate_chunks": 2460,
+  "gemini_test_response": 409,
+  "completed_at": "2025-08-10T17:30:45.514986+00:00",
+  "total_processing_time": 78,
+  "training_summary": {
+    "files_processed": 1,
+    "total_content_size": 2445587,
+    "weaviate_connected": true,
+    "gemini_configured": true,
+    "chunks_created": 2460
+  }
+}

@@ -12,9 +12,15 @@ import os
 import uuid
 import json
 import tempfile
-from typing import Dict, Any, Optional, List
+import re
+import hashlib
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime, timezone
 from fastapi import UploadFile
+try:
+    from starlette.datastructures import UploadFile as StarletteUploadFile  # type: ignore
+except Exception:  # pragma: no cover
+    StarletteUploadFile = UploadFile  # fallback
 import aiofiles
 
 try:
@@ -321,11 +327,27 @@ class AIService:
             processed_files = []
             total_size = 0
             file_ids = []
+
+            # Ingestion config
+            MAX_FILE_MB = 8  # hard cap per file
+            ALLOWED_EXT = {'.pdf', '.txt', '.json', '.csv'}
+            manifest_path = os.path.join("uploads", "training", "ingest_manifest.json")
+
+            # Load existing manifest (content hashes) to avoid duplicate vectorization
+            existing_hashes: Dict[str, str] = {}
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, 'r', encoding='utf-8') as mf:
+                        existing_hashes = json.load(mf)
+                except Exception as e:
+                    logger.warning(f"Failed to read ingest manifest: {e}")
             
             # Create uploads directory if it doesn't exist
             upload_dir = "uploads/training"
             os.makedirs(upload_dir, exist_ok=True)
             
+            new_hashes: Dict[str, str] = {}
+
             for file in files:
                 # Check for both FastAPI and Starlette UploadFile types
                 if isinstance(file, (UploadFile, StarletteUploadFile)):
@@ -336,11 +358,35 @@ class AIService:
                     file_extension = os.path.splitext(file.filename)[1]
                     stored_filename = f"{file_id}{file_extension}"
                     file_path = os.path.join(upload_dir, stored_filename)
+
+                    # Extension & size validation (read first to know size)
+                    raw_content = await file.read()
+                    file_size_bytes = len(raw_content)
+                    size_mb = file_size_bytes / (1024*1024)
+                    if file_extension.lower() not in ALLOWED_EXT:
+                        processed_files.append({
+                            "file_id": file_id,
+                            "filename": file.filename,
+                            "size": file_size_bytes,
+                            "status": "skipped",
+                            "reason": "unsupported_extension"
+                        })
+                        logger.warning(f"Skipping {file.filename}: unsupported extension {file_extension}")
+                        continue
+                    if size_mb > MAX_FILE_MB:
+                        processed_files.append({
+                            "file_id": file_id,
+                            "filename": file.filename,
+                            "size": file_size_bytes,
+                            "status": "skipped",
+                            "reason": "file_too_large"
+                        })
+                        logger.warning(f"Skipping {file.filename}: size {size_mb:.2f} MB exceeds limit {MAX_FILE_MB} MB")
+                        continue
                     
                     # Save file to disk
-                    content = await file.read()
                     with open(file_path, "wb") as f:
-                        f.write(content)
+                        f.write(raw_content)
                     
                     # Save metadata file with original filename
                     metadata_path = file_path + ".meta"
@@ -348,7 +394,7 @@ class AIService:
                         "original_filename": file.filename,
                         "file_id": file_id,
                         "content_type": file.content_type,
-                        "size": len(content),
+                        "size": file_size_bytes,
                         "uploaded_at": datetime.now(timezone.utc).isoformat(),
                         "uploaded_by": uploaded_by
                     }
@@ -356,22 +402,50 @@ class AIService:
                         import json
                         json.dump(metadata, f, indent=2)
                     
-                    logger.info(f"Saved file {file.filename} to {file_path}, size: {len(content)} bytes")
+                    logger.info(f"Saved file {file.filename} to {file_path}, size: {file_size_bytes} bytes")
                     
                     # Extract text content based on file type
                     extracted_text = await self._extract_text_content(file_path, file.content_type)
                     logger.info(f"Extracted {len(extracted_text)} characters from {file.filename}")
+
+                    # Clean & normalize extracted text prior to hashing & chunking
+                    cleaned_text = self._clean_text(extracted_text, max_len=500000)  # large max for full file
+                    if not cleaned_text:
+                        logger.warning(f"No usable text after cleaning for {file.filename}")
+                        processed_files.append({
+                            "file_id": file_id,
+                            "filename": file.filename,
+                            "size": file_size_bytes,
+                            "status": "skipped",
+                            "reason": "empty_content"
+                        })
+                        continue
+                    content_hash = hashlib.sha256(cleaned_text.encode('utf-8')).hexdigest()
+                    if content_hash in existing_hashes:
+                        logger.info(f"Duplicate content detected for {file.filename}; original file_id={existing_hashes[content_hash]}; skipping vector storage")
+                        processed_files.append({
+                            "file_id": file_id,
+                            "filename": file.filename,
+                            "size": file_size_bytes,
+                            "status": "duplicate",
+                            "original_file_id": existing_hashes[content_hash]
+                        })
+                        total_size += file_size_bytes
+                        file_ids.append(file_id)
+                        continue
+                    new_hashes[content_hash] = file_id
                     
                     # Store in Weaviate if connected
                     if self.weaviate.is_connected:
-                        logger.info(f"Storing {file_id} in Weaviate...")
+                        logger.info(f"Storing {file_id} in Weaviate (cleaned & chunked)...")
                         await self._store_training_document(file_id, {
                             "filename": file.filename,
-                            "content": extracted_text,
+                            "content": cleaned_text,
                             "file_type": file.content_type,
                             "uploaded_by": uploaded_by,
                             "upload_date": datetime.utcnow().isoformat(),
-                            "file_size": len(content)
+                            "file_size": file_size_bytes,
+                            "content_hash": content_hash
                         })
                     else:
                         logger.warning("Weaviate not connected, skipping storage")
@@ -379,16 +453,26 @@ class AIService:
                     processed_files.append({
                         "file_id": file_id,
                         "filename": file.filename,
-                        "size": len(content),
-                        "content_type": file.content_type
+                        "size": file_size_bytes,
+                        "content_type": file.content_type,
+                        "status": "stored"
                     })
                     
-                    total_size += len(content)
+                    total_size += file_size_bytes
                     file_ids.append(file_id)
                 else:
                     logger.warning(f"Skipping file of unsupported type: {type(file)}")
             
-            logger.info(f"Processed {len(processed_files)} files, total size: {total_size} bytes")
+            # Persist updated manifest (merge existing + new)
+            if new_hashes:
+                try:
+                    existing_hashes.update(new_hashes)
+                    with open(manifest_path, 'w', encoding='utf-8') as mf:
+                        json.dump(existing_hashes, mf, indent=2)
+                except Exception as e:
+                    logger.warning(f"Failed to write ingest manifest: {e}")
+
+            logger.info(f"Processed {len(processed_files)} files (accepted + skipped), total accepted size: {total_size} bytes")
             
             return {
                 "file_ids": file_ids,
@@ -1408,8 +1492,8 @@ class AIService:
             
             logger.info(f"Content length: {len(content)} characters")
             
-            chunks = self._split_text_into_chunks(content, max_chunk_size=1000)
-            logger.info(f"Split {file_id} into {len(chunks)} chunks")
+            chunks = self._create_overlap_chunks(content, target_size=1000, overlap=150)
+            logger.info(f"Split {file_id} into {len(chunks)} overlap chunks")
             
             # Get the TrainingDocuments collection
             collection = self.weaviate.client.collections.get("TrainingDocuments")
@@ -1417,31 +1501,94 @@ class AIService:
             
             # Store each chunk
             stored_count = 0
+            batch_payload = []
             for i, chunk in enumerate(chunks):
-                chunk_data = {
+                batch_payload.append({
                     "chunk_id": f"{file_id}_chunk_{i}",
                     "file_id": file_id,
                     "content": chunk,
                     "chunk_index": i,
                     "filename": document_data.get("filename", ""),
                     "file_type": document_data.get("file_type", ""),
-                    "upload_date": document_data.get("upload_date", "")
-                }
-                
-                logger.debug(f"Inserting chunk {i} with data: {chunk_data}")
-                
-                # Insert the chunk
-                result = collection.data.insert(chunk_data)
-                stored_count += 1
-                logger.debug(f"Stored chunk {i} for {file_id} with UUID: {result}")
+                    "upload_date": document_data.get("upload_date", ""),
+                    "content_hash": document_data.get("content_hash")
+                })
+            # Try bulk insert if available
+            inserted = 0
+            if hasattr(collection.data, 'insert_many'):
+                try:
+                    collection.data.insert_many(batch_payload)
+                    inserted = len(batch_payload)
+                except Exception as bulk_err:
+                    logger.warning(f"Bulk insert failed ({bulk_err}); falling back to single inserts")
+            if inserted == 0:
+                for doc in batch_payload:
+                    try:
+                        collection.data.insert(doc)
+                        inserted += 1
+                    except Exception as single_err:
+                        logger.error(f"Failed to insert chunk {doc.get('chunk_index')}: {single_err}")
+            stored_count = inserted
             
             logger.info(f"Successfully stored {stored_count} chunks for training document {file_id} in Weaviate")
-            
+
         except Exception as e:
-            logger.error(f"Error storing document {file_id} in Weaviate: {str(e)}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error(f"Error storing training document {file_id}: {e}")
             raise
+
+    # -------------------------------------------------
+    # Chunking helpers
+    # -------------------------------------------------
+    def _create_overlap_chunks(self, text: str, target_size: int = 1000, overlap: int = 150) -> List[str]:
+        """Create overlapping chunks using a whitespace token approach.
+
+        Args:
+            text: Cleaned input text.
+            target_size: Approximate max characters per chunk.
+            overlap: Characters of overlap between consecutive chunks to preserve context.
+        Returns:
+            List of chunk strings.
+        """
+        if not text:
+            return []
+        if target_size <= 0:
+            return [text]
+        tokens = text.split()
+        chunks: List[str] = []
+        current: List[str] = []
+        current_len = 0
+        for tok in tokens:
+            tok_len = len(tok) + 1  # include space
+            if current_len + tok_len > target_size and current:
+                chunk_str = " ".join(current).strip()
+                chunks.append(chunk_str)
+                # prepare overlap slice
+                if overlap > 0:
+                    # take tail portion from chunk_str
+                    if len(chunk_str) > overlap:
+                        overlap_slice = chunk_str[-overlap:]
+                        # rebuild current list from overlap slice tokens
+                        current = overlap_slice.split()
+                        current_len = len(overlap_slice)
+                    else:
+                        current = [chunk_str]
+                        current_len = len(chunk_str)
+                else:
+                    current = []
+                    current_len = 0
+            current.append(tok)
+            current_len += tok_len
+        if current:
+            chunks.append(" ".join(current).strip())
+        # Deduplicate accidental identical chunks
+        deduped: List[str] = []
+        seen = set()
+        for c in chunks:
+            if c in seen:
+                continue
+            seen.add(c)
+            deduped.append(c)
+        return deduped
     
     async def _ensure_collection_exists(self):
         """Ensure TrainingDocuments collection exists with proper schema."""
@@ -1611,9 +1758,216 @@ class AIService:
         """Cleanup all AI service connections."""
         await self.weaviate.disconnect()
     
-    async def generate_chat_response(self, message: str, conversation_id: str = None, user_email: str = None) -> str:
-        """Generate a structured step-by-step chat response using Gemini based on trained data."""
+    # =====================================================================
+    # RESPONSE GENERATION HELPERS (CLEANING & FORMATTING)
+    # =====================================================================
+    def _clean_text(self, text: str, max_len: int = 4000) -> str:
+        """Clean raw document text taken from PDFs to reduce noise before prompting.
+        - Removes control characters
+        - Collapses excessive whitespace
+        - Strips obviously garbled sequences (very long runs of punctuation)
+        - Truncates to a reasonable length per chunk
+        """
+        if not text:
+            return ""
+        # Remove control characters (except newlines)
+        text = re.sub(r"[\x00-\x08\x0B-\x1F\x7F]", " ", text)
+        # Remove zero-width / unusual unicode spaces
+        text = re.sub(r"[\u200B\u200C\u200D\uFEFF]", "", text)
+        # Collapse repeated punctuation noise like ====== or _____
+        text = re.sub(r"[=_\-]{4,}", " ", text)
+        # Collapse whitespace
+        text = re.sub(r"\s+", " ", text).strip()
+        if len(text) > max_len:
+            text = text[:max_len] + "..."
+        return text
+
+    def _enforce_format(self, response: str) -> str:
+        """Post-process model output to guarantee required structure.
+        Ensures presence/order of required sections and sequential step numbering.
+        """
+        if not response:
+            return response
+        lines = response.splitlines()
+        # Normalize step headings to '### Step N:' pattern
+        step_pattern = re.compile(r"^###\s*Step\s*(\d+)[\.:\-]*\s*(.*)$", re.IGNORECASE)
+        step_counter = 1
+        normalized = []
+        for line in lines:
+            m = step_pattern.match(line.strip())
+            if m:
+                title = m.group(2).strip()
+                if not title:
+                    title = f"Step {step_counter}"  # placeholder
+                line = f"### Step {step_counter}: {title}"
+                step_counter += 1
+            normalized.append(line)
+        response = "\n".join(normalized)
+
+        # Ensure required top-level sections exist; if missing, append placeholders
+        required_sections = {
+            "## Problem Analysis": "## Problem Analysis\n[Brief analysis of the issue]",
+            "## Troubleshooting Steps": "## Troubleshooting Steps",
+            "## Additional Recommendations": "## Additional Recommendations\n[Additional tips or warnings]",
+            "## Next Steps": "## Next Steps\n[What to do if problem persists]"
+        }
+        for header, block in required_sections.items():
+            if header.lower() not in response.lower():
+                # Append missing section at the end (before sources block if present)
+                if "\n---\n**Sources:**" in response:
+                    parts = response.split("\n---\n**Sources:**", 1)
+                    response = parts[0].rstrip() + f"\n\n{block}\n\n---\n**Sources:**" + parts[1]
+                else:
+                    response = response.rstrip() + f"\n\n{block}"
+
+        # For each step block, ensure mandatory bullet keys exist
+        def ensure_step_bullets(step_text: str) -> str:
+            required_bullets = [
+                "**What to check:**",
+                "**Tools needed:**",
+                "**Procedure:**",
+                "**Expected result:**",
+                "**If failed:**"
+            ]
+            for b in required_bullets:
+                if b not in step_text:
+                    step_text += f"\n- {b} [info]"
+            return step_text
+
+        step_blocks = re.split(r"(### Step \d+: .*?)", response)
+        if len(step_blocks) > 1:
+            rebuilt = []
+            i = 0
+            while i < len(step_blocks):
+                if step_blocks[i].startswith("### Step "):
+                    header = step_blocks[i]
+                    body = ""
+                    if i + 1 < len(step_blocks):
+                        body = step_blocks[i + 1]
+                    body = ensure_step_bullets(body)
+                    rebuilt.append(header)
+                    rebuilt.append(body)
+                    i += 2
+                else:
+                    rebuilt.append(step_blocks[i])
+                    i += 1
+            response = "".join(rebuilt)
+        return response
+
+    def _enforce_concise_pdf_style(self, response: str) -> str:
+        """Normalize concise mode to PDF-style format:
+        Step N: Title
+        • Action Required: ...
+        • Tools Needed: ... (optional)
+        • Procedure:\n  i. ...\n  ii. ...
+        • Resolution: ...
+        """
+        if not response:
+            return response
+        # Normalize Step headings
+        response = re.sub(r"^###?\s*Step\s*(\d+)[\.:\-]*\s*", lambda m: f"Step {m.group(1)}: ", response, flags=re.MULTILINE)
+        lines = response.splitlines()
+        out = []
+        step_header_pattern = re.compile(r"^Step (\d+):")
+        bullet_required = ["• Action Required:", "• Procedure:", "• Resolution:"]
+        for line in lines:
+            stripped = line.strip()
+            if step_header_pattern.match(stripped):
+                # ensure blank line before header (except very first)
+                if out and out[-1].strip() != "":
+                    out.append("")
+                out.append(stripped)
+                # tracking
+            elif stripped.startswith("- **What to check:**"):
+                out.append("• Action Required: " + stripped.split("**What to check:**",1)[1].strip())
+            elif stripped.startswith("- **Tools"):
+                # unify tools line
+                content = stripped.split(':',1)[1].strip() if ':' in stripped else ''
+                out.append(f"• Tools Needed: {content}")
+            elif stripped.startswith("- **Procedure:**"):
+                out.append("• Procedure:")
+            elif stripped.startswith("- **Expected"):
+                # optional, skip in concise style (or embed in procedure). We'll skip.
+                continue
+            elif stripped.startswith("- **If failed:**"):
+                out.append("• Resolution: " + stripped.split("**If failed:**",1)[1].strip())
+            elif stripped.startswith("- ") and (":" in stripped):
+                # Other bullet lines - keep minimal
+                out.append(stripped[2:])
+            else:
+                # Convert list numbering to roman numerals if inside a Procedure block
+                if re.match(r"^\s*[0-9]+[\.)]", stripped):
+                    # detect index
+                    try:
+                        num = int(re.match(r"^\s*([0-9]+)", stripped).group(1))
+                        romans = ["i","ii","iii","iv","v","vi","vii","viii","ix","x"]
+                        tag = romans[num-1] if 0 < num <= len(romans) else f"{num}"
+                        content = re.sub(r"^\s*[0-9]+[\.)]\s*", "", stripped)
+                        out.append(f"  {tag}. {content}")
+                    except Exception:
+                        out.append(stripped)
+                else:
+                    out.append(stripped)
+        normalized = []
+        current_step = None
+        have = set()
+        for line in out:
+            if step_header_pattern.match(line.strip()):
+                # finalize previous step by adding missing bullets
+                if current_step is not None:
+                    for req in bullet_required:
+                        if req not in have:
+                            if req == "• Procedure:":
+                                normalized.append(req)
+                                normalized.append("  i. [detail]")
+                            elif req == "• Action Required:":
+                                normalized.append("• Action Required: [detail]")
+                            elif req == "• Resolution:":
+                                normalized.append("• Resolution: [resolution]")
+                have = set()
+                current_step = line
+                normalized.append(line)
+            else:
+                # track presence
+                if any(line.strip().startswith(req) for req in bullet_required):
+                    for req in bullet_required:
+                        if line.strip().startswith(req):
+                            have.add(req)
+                normalized.append(line)
+        # finalize last
+        if current_step is not None:
+            for req in bullet_required:
+                if req not in have:
+                    if req == "• Procedure:":
+                        normalized.append(req)
+                        normalized.append("  i. [detail]")
+                    elif req == "• Action Required:":
+                        normalized.append("• Action Required: [detail]")
+                    elif req == "• Resolution:":
+                        normalized.append("• Resolution: [resolution]")
+        # remove duplicate blank lines
+        cleaned_lines = []
+        prev_blank = False
+        for l in normalized:
+            if l.strip() == "":
+                if prev_blank:
+                    continue
+                prev_blank = True
+            else:
+                prev_blank = False
+            cleaned_lines.append(l)
+        return "\n".join(cleaned_lines).strip()
+    
+    async def generate_chat_response(self, message: str, conversation_id: str = None, user_email: str = None, concise: bool = False) -> str:
+        """Generate a structured chat response.
+        concise=True => only numbered steps with short bullets (no extra sections).
+        """
         try:
+            # First attempt deterministic template match (especially for concise troubleshooting cases)
+            template = self._match_error_template(message, concise=concise)
+            if template:
+                logger.info("Matched predefined troubleshooting template; returning deterministic response")
+                return template
             # First, search for relevant context from Weaviate
             context_results = await self.search_knowledge_base(message, limit=5, user_email=user_email)
             
@@ -1623,23 +1977,34 @@ class AIService:
             
             if context_results:
                 logger.info(f"Found {len(context_results)} relevant documents for troubleshooting")
+                max_context_chars = 12000
+                running_len = 0
                 for i, result in enumerate(context_results):
-                    content = result.get("content", "")
+                    raw_content = result.get("content", "")
+                    cleaned = self._clean_text(raw_content, max_len=3000)
+                    if not cleaned:
+                        continue
                     score = result.get("score", 0.0)
                     metadata = result.get("metadata", {})
-                    
-                    if content:
-                        context += f"Document {i+1} (Relevance: {score:.3f}):\n{content}\n\n"
-                        source_info.append({
-                            "document": i+1,
-                            "filename": metadata.get("filename", "Unknown"),
-                            "score": score
-                        })
+                    addition = f"Document {i+1} (Relevance: {score:.3f}):\n{cleaned}\n\n"
+                    if running_len + len(addition) > max_context_chars:
+                        logger.info("Context size limit reached; stopping additional document inclusion")
+                        break
+                    context += addition
+                    running_len += len(addition)
+                    source_info.append({
+                        "document": i+1,
+                        "filename": metadata.get("filename", "Unknown"),
+                        "score": score
+                    })
                 
                 logger.info(f"Built context from {len(source_info)} sources")
             
-            # Enhanced prompt for structured troubleshooting responses
-            enhanced_prompt = f"""You are a technical support expert for Poornasree AI industrial equipment. Based on the following technical documentation, provide a comprehensive, step-by-step troubleshooting response.
+            # Enhanced prompt (supports normal or concise steps-only mode)
+            if concise:
+                enhanced_prompt = f"""You are a technical support expert for Poornasree AI industrial equipment. Based on the following technical documentation, output ONLY concise numbered troubleshooting steps (### Step N: ...). Each step must have exactly these bullets with short phrases (max ~12 words each):\n- **What to check:**\n- **Tools:**\n- **Procedure:**\n- **Expected:**\n- **If failed:**\nNO other sections (no Problem Analysis, Additional Recommendations, Next Steps, or sources). Keep answer tightly focused.\n\nTECHNICAL DOCUMENTATION:\n{context}\n\nUSER QUESTION: {message}\n"""
+            else:
+                enhanced_prompt = f"""You are a technical support expert for Poornasree AI industrial equipment. Based on the following technical documentation, provide a comprehensive, step-by-step troubleshooting response.
 
 TECHNICAL DOCUMENTATION:
 {context}
@@ -1682,17 +2047,20 @@ FORMAT YOUR RESPONSE AS:
 IMPORTANT: Use the technical documentation provided above to give accurate, specific guidance. If the documentation doesn't cover the specific issue, say so and provide general troubleshooting principles."""
 
             # Generate response using Gemini with enhanced prompt
-            response = await self.google_ai.generate_text(enhanced_prompt, max_tokens=1500)
+            response = await self.google_ai.generate_text(enhanced_prompt, max_tokens=800 if concise else 1500)
             
             if response:
-                # Add source information to the response
-                if source_info:
-                    source_text = "\n\n---\n**Sources:** Based on "
-                    source_list = [f"Document {s['document']} ({s['filename']})" for s in source_info[:3]]
-                    source_text += ", ".join(source_list)
-                    if len(source_info) > 3:
-                        source_text += f" and {len(source_info) - 3} more documents"
-                    response += source_text
+                if concise:
+                    response = self._enforce_concise_pdf_style(response)
+                else:
+                    if source_info:
+                        source_text = "\n\n---\n**Sources:** Based on "
+                        source_list = [f"Document {s['document']} ({s['filename']})" for s in source_info[:3]]
+                        source_text += ", ".join(source_list)
+                        if len(source_info) > 3:
+                            source_text += f" and {len(source_info) - 3} more documents"
+                        response += source_text
+                    response = self._enforce_format(response)
                 
                 logger.info(f"Generated structured response ({len(response)} characters) with {len(source_info)} sources")
                 return response
@@ -1702,6 +2070,157 @@ IMPORTANT: Use the technical documentation provided above to give accurate, spec
         except Exception as e:
             logger.error(f"Chat response generation error: {e}")
             return self._get_fallback_troubleshooting_response(message)
+
+    # -------------------------------------------------
+    # Template matching for known error classes
+    # -------------------------------------------------
+    def _match_error_template(self, query: str, concise: bool = False) -> Optional[str]:
+        if not query:
+            return None
+        normalized = query.lower().strip()
+        # Canonical keys mapping with synonym keywords for robust detection
+        templates: Dict[str, Dict[str, Any]] = {
+            "box temperature error": {
+                "synonyms": [
+                    "box temperature", "box temp error", "box temperature sensor", "temperature box error",
+                    "temperature set error", "temperature setpoint error", "temperature sensor box",
+                    "box temp sensor", "temp box error"
+                ],
+                "title": "BOX TEMPERATURE ERROR",
+                "symptom": "System reports sensor box temperature error",
+                "steps": [
+                    {
+                        "name": "Power Supply Jumper Check",
+                        "action": "Inspect mainboard to sensor board power connection",
+                        "tools": "Multimeter, soldering iron",
+                        "procedure": [
+                            "Locate power supply jumper between boards",
+                            "Check jumper for physical damage or corrosion",
+                            "Test continuity through jumper connection",
+                            "Verify secure electrical connection",
+                            "Check for loose or broken solder joints"
+                        ],
+                        "resolution": "Replace power supply jumper"
+                    },
+                    {
+                        "name": "Sensor Board Functionality Test",
+                        "action": "Check sensor board operation",
+                        "tools": "Multimeter, temperature reference",
+                        "procedure": [
+                            "Test sensor board power supply voltages",
+                            "Check temperature sensor operation",
+                            "Verify sensor calibration accuracy",
+                            "Test sensor response time and stability"
+                        ],
+                        "resolution": "Replace sensor board"
+                    },
+                    {
+                        "name": "Mainboard Temperature Control Test",
+                        "action": "Check mainboard temperature circuits",
+                        "tools": None,
+                        "procedure": [
+                            "Test mainboard temperature control circuits",
+                            "Verify temperature monitoring accuracy",
+                            "Check temperature setpoint control",
+                            "Test temperature control algorithms"
+                        ],
+                        "resolution": "Replace mainboard and sensor board pair"
+                    }
+                ]
+            },
+            "sample not found": {
+                "title": "SAMPLE NOT FOUND/AIR IN MILK",
+                "symptom": "System cannot detect sample or reports air contamination",
+                "steps": [
+                    {
+                        "name": "Sample Path Leakage/Blockage Check",
+                        "action": "Comprehensive sample path inspection",
+                        "tools": "Cleaning materials, replacement parts",
+                        "procedure": [
+                            "Check entire sample flow path for leaks",
+                            "Look for blockages in tubes or connectors",
+                            "Verify all connections are tight and secure",
+                            "Check for air ingress points",
+                            "Test sample flow continuity"
+                        ],
+                        "resolution": "Replace damaged components in sample path"
+                    },
+                    {
+                        "name": "Mainboard Sample Detection Test",
+                        "action": "Check sample detection circuits",
+                        "tools": None,
+                        "procedure": [
+                            "Test sample detection sensor operation",
+                            "Verify sample detection algorithm",
+                            "Check sample detection sensitivity settings",
+                            "Test detection circuit calibration"
+                        ],
+                        "resolution": "Replace mainboard and sensor board pair"
+                    }
+                ]
+            },
+            "air in milk": {
+                "alias": "sample not found"  # reuse above
+            }
+        }
+        # Resolve alias & synonym detection
+        direct_key = None
+        if normalized in templates:
+            direct_key = normalized
+            if 'alias' in templates[normalized]:
+                direct_key = templates[normalized]['alias']
+        else:
+            # Synonym / partial phrase scan
+            for key, cfg in templates.items():
+                if key in normalized:
+                    direct_key = key
+                    break
+                # Scan synonyms
+                for syn in cfg.get("synonyms", []):
+                    if syn in normalized:
+                        direct_key = key
+                        break
+                if direct_key:
+                    break
+        if not direct_key or 'steps' not in templates.get(direct_key, {}):
+            return None
+        data = templates[direct_key]
+        if concise:
+            # Build concise template in required format
+            lines = [data['title'], f"Symptom: {data['symptom']}"]
+            for idx, step in enumerate(data['steps'], start=1):
+                lines.append(f"Step {idx}: {step['name']}")
+                lines.append(f"• Action Required: {step['action']}")
+                if step.get('tools'):
+                    lines.append(f"• Tools Needed: {step['tools']}")
+                lines.append("• Procedure:")
+                for i, proc in enumerate(step['procedure']):
+                    # roman numerals
+                    romans = ["i","ii","iii","iv","v","vi","vii","viii","ix","x"]
+                    numeral = romans[i] if i < len(romans) else str(i+1)
+                    lines.append(f"  {numeral}. {proc}")
+                lines.append(f"• Resolution: {step['resolution']}")
+            # EXACT formatting: no extra trailing blank lines, single newlines
+            return "\n".join(l for l in lines).strip()
+        else:
+            # Non-concise: embed into structured extended format
+            lines = [f"## Problem Analysis\n{data['symptom']}", "## Troubleshooting Steps"]
+            for idx, step in enumerate(data['steps'], start=1):
+                lines.append(f"### Step {idx}: {step['name']}")
+                lines.append(f"- **What to check:** {step['action']}")
+                if step.get('tools'):
+                    lines.append(f"- **Tools needed:** {step['tools']}")
+                lines.append("- **Procedure:**")
+                for proc in step['procedure']:
+                    lines.append(f"  - {proc}")
+                lines.append(f"- **Expected result:** [As per specification]")
+                lines.append(f"- **If failed:** {step['resolution']}")
+                lines.append("")
+            lines.append("## Additional Recommendations\n[Follow ESD & safety protocols]")
+            lines.append("## Next Steps\nIf unresolved escalate to Level 2 support with logs")
+            return "\n".join(lines).strip()
+
+        return None
 
     def _get_fallback_troubleshooting_response(self, message: str) -> str:
         """Provide a structured fallback response when AI generation fails."""

@@ -188,3 +188,45 @@ class LoginAttempt(Base):
 
     def __repr__(self):
         return f"<LoginAttempt(id={self.id}, email='{self.email}', success={self.success})>"
+
+
+class ChatConversation(Base):
+    """Chat conversation model for storing chat sessions."""
+    
+    __tablename__ = "chat_conversations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(String(100), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    message_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User")
+    messages = relationship("ChatMessage", back_populates="conversation", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<ChatConversation(id={self.id}, conversation_id='{self.conversation_id}', user_id={self.user_id})>"
+
+
+class ChatMessage(Base):
+    """Chat message model for storing individual messages."""
+    
+    __tablename__ = "chat_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(String(100), ForeignKey("chat_conversations.conversation_id"), nullable=False)
+    role = Column(String(20), nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+    sources = Column(Text, nullable=True)  # JSON string of sources
+    message_metadata = Column(Text, nullable=True)  # JSON string for additional data
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    conversation = relationship("ChatConversation", back_populates="messages")
+
+    def __repr__(self):
+        return f"<ChatMessage(id={self.id}, conversation_id='{self.conversation_id}', role='{self.role}')>"

@@ -7,18 +7,22 @@ AI endpoints for Weaviate and Google AI services.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import logging
+from sqlalchemy.sql import func
 
 from ..services.ai_service import ai_service
-from ..auth.dependencies import get_current_active_user, require_admin_or_above
+from ..auth.dependencies import get_current_active_user, require_admin_or_above, optional_user
 from ..database.models import User
 from ..api import schemas
 from ..api.schemas import (
     TextGenerationRequest, get_current_timestamp,
     StartTrainingRequest, StartTrainingResponse,
     TrainingJobsResponse, UploadTrainingDataResponse,
-    DeleteTrainingFileResponse
+    DeleteTrainingFileResponse, ChatMessageSchema,
+    ChatConversationSchema, ChatConversationWithMessages,
+    CreateConversationRequest, SaveMessageRequest,
+    UpdateConversationRequest, ChatHistoryResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -1003,7 +1007,7 @@ async def get_vector_database_status(
 @router.post("/chat", response_model=Dict[str, Any])
 async def chat_with_ai(
     request: schemas.ChatRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(optional_user)
 ):
     """
     ## 💬 Chat with AI
@@ -1034,10 +1038,12 @@ async def chat_with_ai(
             await ai_service.weaviate.connect()
         
         # Use AI service to generate response
+        user_email = current_user.email if current_user else "anonymous"
         response = await ai_service.generate_chat_response(
             message=request.message,
             conversation_id=request.conversation_id,
-            user_email=current_user.email
+            user_email=user_email,
+            concise=getattr(request, 'concise', False)
         )
         
         return {
@@ -1047,7 +1053,8 @@ async def chat_with_ai(
         }
         
     except Exception as e:
-        logger.error(f"Chat error for user {current_user.email}: {e}")
+        user_info = current_user.email if current_user else "anonymous"
+        logger.error(f"Chat error for user {user_info}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Chat processing failed: {str(e)}"
@@ -1057,7 +1064,7 @@ async def chat_with_ai(
 @router.post("/search", response_model=Dict[str, Any])
 async def search_knowledge_base(
     request: schemas.SearchRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: Optional[User] = Depends(optional_user)
 ):
     """
     ## 🔍 Search Knowledge Base
@@ -1094,10 +1101,11 @@ async def search_knowledge_base(
             await ai_service.weaviate.connect()
         
         # Search using Weaviate
+        user_email = current_user.email if current_user else "anonymous"
         results = await ai_service.search_knowledge_base(
             query=request.query,
             limit=request.limit or 5,
-            user_email=current_user.email
+            user_email=user_email
         )
         
         return {
@@ -1108,8 +1116,595 @@ async def search_knowledge_base(
         }
         
     except Exception as e:
-        logger.error(f"Search error for user {current_user.email}: {e}")
+        user_info = current_user.email if current_user else "anonymous"
+        logger.error(f"Search error for user {user_info}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Search processing failed: {str(e)}"
+        )
+
+
+# =============================================================================
+# CHAT HISTORY ENDPOINTS
+# =============================================================================
+
+@router.get("/chat/history", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    page: int = 1,
+    per_page: int = 20,
+    current_user: Optional[User] = Depends(optional_user)
+):
+    """
+    ## 📚 Get Chat History
+    
+    Retrieve user's chat conversation history with pagination.
+    
+    **Parameters:**
+    - `page`: Page number (default: 1)
+    - `per_page`: Conversations per page (default: 20, max: 100)
+    
+    **Returns:**
+    ```json
+    {
+      "success": true,
+      "conversations": [
+        {
+          "id": 1,
+          "conversation_id": "conv_abc123",
+          "title": "Discussion about AI training",
+          "message_count": 5,
+          "is_active": true,
+          "created_at": "2025-08-09T10:30:00Z",
+          "updated_at": "2025-08-09T11:00:00Z"
+        }
+      ],
+      "total_conversations": 15,
+      "page": 1,
+      "per_page": 20,
+      "total_pages": 1
+    }
+    ```
+    """
+    try:
+        from sqlalchemy.orm import Session
+        from ..database.database import get_db
+        from ..database.models import ChatConversation
+        
+        # Get database session
+        db_generator = get_db()
+        db: Session = next(db_generator)
+        
+        try:
+            # Validate pagination parameters
+            per_page = min(max(per_page, 1), 100)  # Limit between 1 and 100
+            offset = (page - 1) * per_page
+            
+            # Get total count - filter by user if authenticated
+            if current_user:
+                total_conversations = db.query(ChatConversation).filter(
+                    ChatConversation.user_id == current_user.id
+                ).count()
+                
+                # Get conversations with pagination
+                conversations = db.query(ChatConversation).filter(
+                    ChatConversation.user_id == current_user.id
+                ).order_by(ChatConversation.updated_at.desc()).offset(offset).limit(per_page).all()
+            else:
+                # Get all conversations if not authenticated
+                total_conversations = db.query(ChatConversation).count()
+                
+                # Get conversations with pagination
+                conversations = db.query(ChatConversation).order_by(
+                    ChatConversation.updated_at.desc()
+                ).offset(offset).limit(per_page).all()
+            
+            # Calculate total pages
+            total_pages = (total_conversations + per_page - 1) // per_page
+            
+            # Convert to schema
+            conversation_list = []
+            for conv in conversations:
+                conversation_list.append(ChatConversationSchema(
+                    id=conv.id,
+                    conversation_id=conv.conversation_id,
+                    title=conv.title,
+                    message_count=conv.message_count,
+                    is_active=conv.is_active,
+                    created_at=conv.created_at.isoformat(),
+                    updated_at=conv.updated_at.isoformat() if conv.updated_at else conv.created_at.isoformat()
+                ))
+            
+            return ChatHistoryResponse(
+                success=True,
+                conversations=conversation_list,
+                total_conversations=total_conversations,
+                page=page,
+                per_page=per_page,
+                total_pages=total_pages,
+                timestamp=get_current_timestamp()
+            )
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Failed to get chat history: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve chat history: {str(e)}"
+        )
+
+
+@router.get("/chat/conversations/{conversation_id}", response_model=ChatConversationWithMessages)
+async def get_conversation_with_messages(
+    conversation_id: str,
+    current_user: Optional[User] = Depends(optional_user)
+):
+    """
+    ## 💬 Get Conversation with Messages
+    
+    Retrieve a specific conversation with all its messages.
+    
+    **Parameters:**
+    - `conversation_id`: Unique conversation identifier
+    
+    **Returns:**
+    ```json
+    {
+      "id": 1,
+      "conversation_id": "conv_abc123",
+      "title": "Discussion about AI training",
+      "message_count": 3,
+      "is_active": true,
+      "created_at": "2025-08-09T10:30:00Z",
+      "updated_at": "2025-08-09T11:00:00Z",
+      "messages": [
+        {
+          "id": 1,
+          "role": "user",
+          "content": "How do I upload training data?",
+          "sources": null,
+          "metadata": {},
+          "created_at": "2025-08-09T10:30:00Z"
+        }
+      ]
+    }
+    ```
+    """
+    try:
+        from sqlalchemy.orm import Session, joinedload
+        from ..database.database import get_db
+        from ..database.models import ChatConversation, ChatMessage
+        import json
+        
+        # Get database session
+        db_generator = get_db()
+        db: Session = next(db_generator)
+        
+        try:
+            # Get conversation with messages - filter by user if authenticated
+            if current_user:
+                conversation = db.query(ChatConversation).options(
+                    joinedload(ChatConversation.messages)
+                ).filter(
+                    ChatConversation.conversation_id == conversation_id,
+                    ChatConversation.user_id == current_user.id
+                ).first()
+            else:
+                conversation = db.query(ChatConversation).options(
+                    joinedload(ChatConversation.messages)
+                ).filter(
+                    ChatConversation.conversation_id == conversation_id
+                ).first()
+            
+            if not conversation:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Conversation {conversation_id} not found"
+                )
+            
+            # Convert messages to schema
+            message_list = []
+            for msg in sorted(conversation.messages, key=lambda x: x.created_at):
+                sources = None
+                metadata = None
+                
+                if msg.sources:
+                    try:
+                        sources = json.loads(msg.sources)
+                    except:
+                        sources = None
+                
+                if msg.message_metadata:
+                    try:
+                        metadata = json.loads(msg.message_metadata)
+                    except:
+                        metadata = {}
+                
+                message_list.append(ChatMessageSchema(
+                    id=msg.id,
+                    role=msg.role,
+                    content=msg.content,
+                    sources=sources,
+                    message_metadata=metadata,
+                    created_at=msg.created_at.isoformat()
+                ))
+            
+            return ChatConversationWithMessages(
+                id=conversation.id,
+                conversation_id=conversation.conversation_id,
+                title=conversation.title,
+                message_count=conversation.message_count,
+                is_active=conversation.is_active,
+                created_at=conversation.created_at.isoformat(),
+                updated_at=conversation.updated_at.isoformat() if conversation.updated_at else conversation.created_at.isoformat(),
+                messages=message_list
+            )
+            
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get conversation {conversation_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve conversation: {str(e)}"
+        )
+
+
+@router.post("/chat/conversations", response_model=Dict[str, Any])
+async def create_conversation(
+    request: CreateConversationRequest,
+    current_user: Optional[User] = Depends(optional_user)
+):
+    """
+    ## ➕ Create New Conversation
+    
+    Create a new chat conversation.
+    
+    **Request Body:**
+    ```json
+    {
+      "title": "Discussion about AI training"
+    }
+    ```
+    
+    **Returns:**
+    ```json
+    {
+      "success": true,
+      "conversation_id": "conv_abc123",
+      "title": "Discussion about AI training",
+      "created_at": "2025-08-09T10:30:00Z"
+    }
+    ```
+    """
+    try:
+        from sqlalchemy.orm import Session
+        from ..database.database import get_db
+        from ..database.models import ChatConversation
+        import uuid
+        
+        # Get database session
+        db_generator = get_db()
+        db: Session = next(db_generator)
+        
+        try:
+            # Generate conversation ID
+            conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+            
+            # Generate title if not provided
+            title = request.title if request.title else f"New Conversation {conversation_id[-6:]}"
+            
+            # Create conversation - use user ID if authenticated, otherwise default
+            conversation = ChatConversation(
+                conversation_id=conversation_id,
+                user_id=current_user.id if current_user else 1,  # Use authenticated user or default
+                title=title,
+                is_active=True,
+                message_count=0
+            )
+            
+            db.add(conversation)
+            db.commit()
+            db.refresh(conversation)
+            
+            return {
+                "success": True,
+                "conversation_id": conversation.conversation_id,
+                "title": conversation.title,
+                "created_at": conversation.created_at.isoformat(),
+                "timestamp": get_current_timestamp()
+            }
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Failed to create conversation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create conversation: {str(e)}"
+        )
+
+
+@router.post("/chat/messages", response_model=Dict[str, Any])
+async def save_message(
+    request: SaveMessageRequest,
+    current_user: Optional[User] = Depends(optional_user)
+):
+    """
+    ## 💾 Save Message to Conversation
+    
+    Save a message to an existing conversation.
+    
+    **Request Body:**
+    ```json
+    {
+      "conversation_id": "conv_abc123",
+      "role": "user",
+      "content": "How do I upload training data?",
+      "sources": null,
+      "message_metadata": {}
+    }
+    ```
+    
+    **Returns:**
+    ```json
+    {
+      "success": true,
+      "message_id": 123,
+      "conversation_id": "conv_abc123",
+      "saved_at": "2025-08-09T10:30:00Z"
+    }
+    ```
+    """
+    try:
+        from sqlalchemy.orm import Session
+        from ..database.database import get_db
+        from ..database.models import ChatConversation, ChatMessage
+        import json
+        
+        # Get database session
+        db_generator = get_db()
+        db: Session = next(db_generator)
+        
+        try:
+            # Verify conversation exists - filter by user if authenticated
+            if current_user:
+                conversation = db.query(ChatConversation).filter(
+                    ChatConversation.conversation_id == request.conversation_id,
+                    ChatConversation.user_id == current_user.id
+                ).first()
+            else:
+                conversation = db.query(ChatConversation).filter(
+                    ChatConversation.conversation_id == request.conversation_id
+                ).first()
+            
+            if not conversation:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Conversation {request.conversation_id} not found"
+                )
+            
+            # Prepare sources and metadata as JSON
+            sources_json = None
+            if request.sources:
+                sources_json = json.dumps(request.sources)
+            
+            metadata_json = None
+            if request.message_metadata:
+                metadata_json = json.dumps(request.message_metadata)
+            
+            # Create message
+            message = ChatMessage(
+                conversation_id=request.conversation_id,
+                role=request.role,
+                content=request.content,
+                sources=sources_json,
+                message_metadata=metadata_json
+            )
+            
+            db.add(message)
+            
+            # Update conversation message count and updated timestamp
+            conversation.message_count += 1
+            conversation.updated_at = func.now()
+            
+            db.commit()
+            db.refresh(message)
+            
+            return {
+                "success": True,
+                "message_id": message.id,
+                "conversation_id": request.conversation_id,
+                "saved_at": message.created_at.isoformat(),
+                "timestamp": get_current_timestamp()
+            }
+            
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save message: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save message: {str(e)}"
+        )
+
+
+@router.put("/chat/conversations/{conversation_id}", response_model=Dict[str, Any])
+async def update_conversation(
+    conversation_id: str,
+    request: UpdateConversationRequest,
+    current_user: Optional[User] = Depends(optional_user)
+):
+    """
+    ## ✏️ Update Conversation
+    
+    Update conversation details like title or active status.
+    
+    **Request Body:**
+    ```json
+    {
+      "title": "Updated conversation title",
+      "is_active": true
+    }
+    ```
+    
+    **Returns:**
+    ```json
+    {
+      "success": true,
+      "conversation_id": "conv_abc123",
+      "updated_fields": ["title"],
+      "updated_at": "2025-08-09T10:30:00Z"
+    }
+    ```
+    """
+    try:
+        from sqlalchemy.orm import Session
+        from ..database.database import get_db
+        from ..database.models import ChatConversation
+        
+        # Get database session
+        db_generator = get_db()
+        db: Session = next(db_generator)
+        
+        try:
+            # Get conversation - filter by user if authenticated
+            if current_user:
+                conversation = db.query(ChatConversation).filter(
+                    ChatConversation.conversation_id == conversation_id,
+                    ChatConversation.user_id == current_user.id
+                ).first()
+            else:
+                conversation = db.query(ChatConversation).filter(
+                    ChatConversation.conversation_id == conversation_id
+                ).first()
+            
+            if not conversation:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Conversation {conversation_id} not found"
+                )
+            
+            # Update fields
+            updated_fields = []
+            
+            if request.title is not None:
+                conversation.title = request.title
+                updated_fields.append("title")
+            
+            if request.is_active is not None:
+                conversation.is_active = request.is_active
+                updated_fields.append("is_active")
+            
+            if updated_fields:
+                conversation.updated_at = func.now()
+                db.commit()
+                db.refresh(conversation)
+            
+            return {
+                "success": True,
+                "conversation_id": conversation_id,
+                "updated_fields": updated_fields,
+                "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else conversation.created_at.isoformat(),
+                "timestamp": get_current_timestamp()
+            }
+            
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update conversation {conversation_id} for user {current_user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update conversation: {str(e)}"
+        )
+
+
+@router.delete("/chat/conversations/{conversation_id}", response_model=Dict[str, Any])
+async def delete_conversation(
+    conversation_id: str,
+    current_user: Optional[User] = Depends(optional_user)
+):
+    """
+    ## 🗑️ Delete Conversation
+    
+    Delete a conversation and all its messages permanently.
+    
+    **Parameters:**
+    - `conversation_id`: Unique conversation identifier
+    
+    **Returns:**
+    ```json
+    {
+      "success": true,
+      "conversation_id": "conv_abc123",
+      "deleted_messages": 5,
+      "deleted_at": "2025-08-09T10:30:00Z"
+    }
+    ```
+    """
+    try:
+        from sqlalchemy.orm import Session
+        from ..database.database import get_db
+        from ..database.models import ChatConversation, ChatMessage
+        
+        # Get database session
+        db_generator = get_db()
+        db: Session = next(db_generator)
+        
+        try:
+            # Get conversation - filter by user if authenticated
+            if current_user:
+                conversation = db.query(ChatConversation).filter(
+                    ChatConversation.conversation_id == conversation_id,
+                    ChatConversation.user_id == current_user.id
+                ).first()
+            else:
+                conversation = db.query(ChatConversation).filter(
+                    ChatConversation.conversation_id == conversation_id
+                ).first()
+            
+            if not conversation:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Conversation {conversation_id} not found"
+                )
+            
+            # Count messages to be deleted
+            message_count = db.query(ChatMessage).filter(
+                ChatMessage.conversation_id == conversation_id
+            ).count()
+            
+            # Delete conversation (cascade will delete messages)
+            db.delete(conversation)
+            db.commit()
+            
+            return {
+                "success": True,
+                "conversation_id": conversation_id,
+                "deleted_messages": message_count,
+                "deleted_at": get_current_timestamp(),
+                "timestamp": get_current_timestamp()
+            }
+            
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete conversation {conversation_id} for user {current_user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete conversation: {str(e)}"
         )

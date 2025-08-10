@@ -28,7 +28,10 @@ sys.path.append(str(Path(__file__).parent))
 from app.config import settings
 from app.database.database import Base, engine
 from app.database.models import *  # Import all models
-from app.database.models import User, EngineerApplication, Notification, AuditLog
+from app.database.models import (
+    User, EngineerApplication, Notification, AuditLog, OTPVerification, 
+    LoginAttempt, ChatConversation, ChatMessage
+)
 from app.core.constants import UserRole, UserStatus, NotificationType
 from app.auth.auth import get_password_hash
 
@@ -89,6 +92,11 @@ def create_tables():
         # Show which models are loaded
         model_tables = list(Base.metadata.tables.keys())
         print(f"📋 Models loaded: {model_tables}")
+        expected_tables = [
+            'users', 'engineer_applications', 'notifications', 'audit_logs', 
+            'otp_verifications', 'login_attempts', 'chat_conversations', 'chat_messages'
+        ]
+        print(f"📋 Expected tables: {expected_tables}")
         
         # Create all tables
         Base.metadata.create_all(bind=engine)
@@ -98,6 +106,13 @@ def create_tables():
         inspector = inspect(engine)
         tables = inspector.get_table_names()
         print(f"📊 Tables in database: {tables}")
+        
+        # Check if all expected tables are present
+        missing_tables = set(expected_tables) - set(tables)
+        if missing_tables:
+            print(f"⚠️  Missing tables: {missing_tables}")
+        else:
+            print("✅ All expected tables are present")
         
         return True
         
@@ -243,11 +258,21 @@ def setup_complete_database():
     print("🎉 PRODUCTION DATABASE SETUP FINISHED SUCCESSFULLY!")
     print("="*60)
     print("✅ Database created")
-    print("✅ Tables created") 
+    print("✅ Tables created (including chat history)") 
     print("✅ Migrations applied")
     print("✅ Super admin user created")
     print()
-    print("👥 LOGIN CREDENTIALS:")
+    print("� DATABASE TABLES:")
+    print("   • users - User accounts and profiles")
+    print("   • engineer_applications - Engineer approval workflow")
+    print("   • notifications - In-app notifications")
+    print("   • audit_logs - Security audit trail")
+    print("   • otp_verifications - Email verification codes")
+    print("   • login_attempts - Security tracking")
+    print("   • chat_conversations - AI chat sessions")
+    print("   • chat_messages - Individual chat messages")
+    print()
+    print("�👥 LOGIN CREDENTIALS:")
     print("📧 Super Admin: " + settings.super_admin_email)
     print("🔑 Password: " + settings.super_admin_password)
     print()
@@ -255,6 +280,7 @@ def setup_complete_database():
     print("📝 Use: python main.py")
     print("🌐 URLs:")
     print("   • Admin Dashboard: http://localhost:3000/dashboard")
+    print("   • AI Chat Interface: http://localhost:3000/chat")
     print("   • API Documentation: http://localhost:8000/docs")
     print("   • API Health Check: http://localhost:8000/health")
     print("="*60)

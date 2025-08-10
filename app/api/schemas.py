@@ -701,12 +701,14 @@ class ChatRequest(BaseSchema):
     """Schema for AI chat request."""
     message: str = Field(..., min_length=1, max_length=2000, description="User message to the AI")
     conversation_id: Optional[str] = Field(None, description="Conversation ID for context")
+    concise: Optional[bool] = Field(False, description="Return concise steps-only troubleshooting output")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "How can I upload training data?",
-                "conversation_id": "conv_123"
+                "conversation_id": "conv_123",
+                "concise": True
             }
         }
 
@@ -732,3 +734,82 @@ class SearchRequest(BaseSchema):
 def get_current_timestamp() -> str:
     """Get current timestamp as ISO string."""
     return datetime.utcnow().isoformat()
+
+
+# =============================================================================
+# CHAT HISTORY SCHEMAS
+# =============================================================================
+
+class ChatMessageSchema(BaseSchema):
+    """Schema for chat message."""
+    id: int = Field(..., description="Message ID")
+    role: str = Field(..., description="Message role: user or assistant")
+    content: str = Field(..., description="Message content")
+    sources: Optional[List[Dict[str, Any]]] = Field(None, description="Sources used for the response")
+    message_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional message metadata")
+    created_at: str = Field(..., description="Message creation timestamp")
+
+
+class ChatConversationSchema(BaseSchema):
+    """Schema for chat conversation."""
+    id: int = Field(..., description="Conversation database ID")
+    conversation_id: str = Field(..., description="Unique conversation identifier")
+    title: str = Field(..., description="Conversation title")
+    message_count: int = Field(..., description="Number of messages in conversation")
+    is_active: bool = Field(..., description="Whether conversation is active")
+    created_at: str = Field(..., description="Conversation creation timestamp")
+    updated_at: str = Field(..., description="Conversation last update timestamp")
+
+
+class ChatConversationWithMessages(ChatConversationSchema):
+    """Schema for chat conversation with messages."""
+    messages: List[ChatMessageSchema] = Field(..., description="Messages in the conversation")
+
+
+class CreateConversationRequest(BaseSchema):
+    """Schema for creating a new conversation."""
+    title: Optional[str] = Field(None, max_length=255, description="Conversation title (auto-generated if not provided)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Discussion about AI training"
+            }
+        }
+
+
+class SaveMessageRequest(BaseSchema):
+    """Schema for saving a message to conversation."""
+    conversation_id: str = Field(..., description="Conversation ID")
+    role: str = Field(..., description="Message role: user or assistant")
+    content: str = Field(..., min_length=1, max_length=10000, description="Message content")
+    sources: Optional[List[Dict[str, Any]]] = Field(None, description="Sources used for the response")
+    message_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional message metadata")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "conversation_id": "conv_abc123",
+                "role": "user",
+                "content": "How do I upload training data?",
+                "sources": None,
+                "message_metadata": {}
+            }
+        }
+
+
+class UpdateConversationRequest(BaseSchema):
+    """Schema for updating conversation details."""
+    title: Optional[str] = Field(None, max_length=255, description="New conversation title")
+    is_active: Optional[bool] = Field(None, description="Whether conversation is active")
+
+
+class ChatHistoryResponse(BaseSchema):
+    """Schema for chat history response."""
+    success: bool = Field(..., description="Operation success status")
+    conversations: List[ChatConversationSchema] = Field(..., description="List of conversations")
+    total_conversations: int = Field(..., description="Total number of conversations")
+    page: int = Field(..., description="Current page number")
+    per_page: int = Field(..., description="Number of conversations per page")
+    total_pages: int = Field(..., description="Total number of pages")
+    timestamp: str = Field(..., description="Response timestamp")
